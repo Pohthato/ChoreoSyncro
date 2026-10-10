@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "syncscore"
+version = "0.1.0"
+description = "Measure how synchronized a dance group is from a single video."
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "scipy>=1.11",
+    "opencv-python>=4.8",
+    "matplotlib>=3.8",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+# Pose extraction needs a video model; the alignment math and the synthetic benchmark do not.
+pose = ["ultralytics>=8.3"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+syncscore = "syncscore.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["syncscore*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,25 @@
+# Source footage and frames never go in this repo (copyright). Only derived data does.
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.avi
+*.m4v
+data/
+frames/
+results/
+
+# Derived skeleton renders that we choose to publish live here and are allowed.
+!docs/media/
+!docs/media/**
+
+# Model weights are downloaded on demand.
+*.pt
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+.venv/
+build/
+dist/

@@ -1,0 +1,8 @@
+# Runs on a laptop CPU. For a GPU, install the CUDA build of torch first (see pytorch.org).
+numpy>=1.26
+scipy>=1.11
+opencv-python>=4.8
+matplotlib>=3.8
+pyyaml>=6.0
+ultralytics>=8.3
+pytest>=8

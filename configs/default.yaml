@@ -1,0 +1,38 @@
+# SyncScore default configuration. Every value here is read by syncscore/config.py.
+
+pose:
+  model: yolo11s-pose.pt      # yolo11m-pose.pt is more accurate and slower
+  device: cpu                 # "cpu", or "0" for the first GPU
+  min_keypoint_conf: 0.3      # below this a keypoint is treated as missing
+  min_box_conf: 0.25
+
+tracking:
+  tracker: bytetrack.yaml
+  members: 0                  # expected group size; 0 = infer from the most common count
+  stitch_max_gap_s: 2.0       # rejoin broken tracks separated by at most this long
+  crossing_iou: 0.3           # box overlap that counts as two members crossing
+
+smoothing:
+  min_cutoff: 1.0             # One Euro: lower = smoother when still
+  beta: 0.05                  # One Euro: higher = less lag during fast motion
+  d_cutoff: 1.0
+  max_gap_frames: 4           # interpolate holes up to this long, leave longer ones missing
+
+features:
+  mirror: "off"               # "off" | "auto" | a list of member ids to mirror, e.g. [2, 4]
+
+sync:
+  window_s: 2.0
+  hop_s: 0.25
+  max_lag_ms: 400
+  min_motion: 0.15            # windows with less motion than this have no reliable offset
+  min_peak: 0.5               # cross-correlation peak below this = no reliable offset
+
+sections:
+  # Either list explicit [start_s, end_s, name] sections, or leave empty for fixed chunks.
+  explicit: []
+  chunk_s: 8.0
+
+render:
+  in_sync_ms: 35              # |offset| at or below this is drawn green
+  off_sync_ms: 135            # |offset| at or above this is drawn red
