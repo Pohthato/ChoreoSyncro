@@ -48,8 +48,12 @@ class SyncConfig:
     window_s: float = 2.0
     hop_s: float = 0.25
     max_lag_ms: float = 400.0
-    min_motion: float = 0.15
+    min_motion: float = 0.3
     min_peak: float = 0.5
+    min_coverage: float = 0.5
+    lag_penalty: float = 0.1
+    iterations: int = 10
+    shape_threshold_deg: float = 15.0
 
 
 @dataclass

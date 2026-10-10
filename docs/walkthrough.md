@@ -72,3 +72,60 @@ raised sideways have the same elbow angle but different directions). They are al
 compare: one angle between two unit vectors. **Limit:** they are 2D. A member turned 30° away
 from the camera shows foreshortened, slightly different directions for the same 3D pose. 3D
 lifting would fix this, at the cost of a second model and its own errors.
+
+## Stage 3: the alignment math
+
+**Goal:** for every member, at every moment: how many ms ahead or behind the group
+(**timing**), and how wrong the pose is once timing is taken out (**shape**), per body part.
+
+**Step 1: the consensus** (`sync/consensus.py`). "The group" at each moment is the **median**
+direction of each bone across the **other** members (leave-one-out).
+- Leave-one-out: if member i were in their own reference, they'd pull it toward themselves
+  and look better than they are. With 5 members that hides about a fifth of their error.
+- Median, not mean: if one other member holds their arm wrong, a mean drags the reference and
+  everyone else looks slightly wrong. A median ignores one outlier (a test checks this).
+
+**Step 2: timing** (`sync/timing.py`). Take 2-second windows every 0.25 s. In each one, slide the
+member's signal against the consensus by -400…+400 ms and score how well they line up with
+**normalised cross-correlation** (1 = identical motion). The best-scoring shift is the offset.
+- **The signal is bone velocity, not position.** Being in sync means starting and stopping each
+  movement together, and velocity peaks exactly there. Velocity is also blind to a
+  constant pose error (an arm held 20° off moves at the same speed as one held correctly), which
+  is what keeps timing and shape apart.
+- **Sub-frame precision:** fit a parabola through the best score and its two neighbours and
+  take the top. At 30 fps one frame is 33 ms, but this recovers a 17 ms (half-frame) offset
+  to within 2 ms.
+- **Why not DTW:** DTW stretches time freely to make poses match, so part of a shape error leaks
+  into timing. It returns a warping path, not "one offset for this stretch", and it has no
+  natural sub-frame answer. Cross-correlation answers exactly the question we ask.
+- **Periodic moves:** a move repeated every beat gives several correlation peaks. A **Viterbi**
+  pass picks the sequence of offsets over all windows that maximises total score minus a
+  penalty for jumping (0.1 per 100 ms), so one ambiguous window follows its neighbours.
+- **Honesty gates:** a window gets "no reliable offset" when the group barely moves (nothing to
+  time), the peak is low (the motions don't match), or the member is missing for most of it.
+
+**Step 3: iterate to a common clock** (`sync/measure.py`). The first pass compares everyone
+against an unaligned consensus, which is blurry because members are at different times. So:
+shift each member by their current offset, rebuild the consensus from the shifted members,
+measure again. The group clock is the **median member**: offsets are re-centred so the median
+member is 0 ms.
+- **A bug found and fixed here:** the first version did 3 plain passes and every member came
+  out about 2.5 ms too far from zero. Printing the error per pass showed it flipping sign each
+  pass (9 → −4.9 → +2.7 ms). Each member was measured against others whose own estimates were
+  still wrong in the opposite direction. With 2 members it would flip forever. The fix is a
+  **damped update** (move halfway toward each new estimate) and stopping once nothing moves by
+  more than 0.1 ms. Error on clean data went from 2.7 ms to under 0.4 ms for groups of 2 to 7.
+  A regression test with 2 members guards it.
+
+**Step 4: shape** (`sync/shape.py`). Move the consensus onto the member's own clock using their
+offset, then measure the angle between each of the member's bones and the consensus bone.
+Average per body part, weighted by trust. The synthetic test injects +20° at one member's left
+elbow and checks that the measurement says: that member, **left forearm, 20 ± 2°**, arms are the
+worst part, timing unchanged, and **no other member picks up the error** through the consensus.
+
+**Mirroring** (`features.mirror`): `"off"`, a list of member numbers, or `"auto"`, where each
+window keeps whichever of "as is" or "mirrored" is closer to the consensus, smoothed over 5
+windows. Both the fixed and auto modes are tested on a mirrored member who is also 100 ms late.
+
+**Likely interview question:** *"What does an offset of +40 ms mean?"* That member performs
+each movement 40 ms after the group's median member during that window. Negative means early.

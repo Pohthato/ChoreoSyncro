@@ -25,8 +25,12 @@ sync:
   window_s: 2.0
   hop_s: 0.25
   max_lag_ms: 400
-  min_motion: 0.15            # windows with less motion than this have no reliable offset
+  min_motion: 0.3             # group's RMS bone angular speed (rad/s); stiller windows carry no timing
   min_peak: 0.5               # cross-correlation peak below this = no reliable offset
+  min_coverage: 0.5           # share of the window in which the member must be visible
+  lag_penalty: 0.1            # Viterbi cost per 100 ms of jump between neighbouring windows
+  iterations: 10              # max align -> consensus -> re-estimate passes (stops early once stable)
+  shape_threshold_deg: 15.0   # a body part counts as "off" above this mean angle
 
 sections:
   # Either list explicit [start_s, end_s, name] sections, or leave empty for fixed chunks.
