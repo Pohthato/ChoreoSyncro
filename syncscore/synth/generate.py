@@ -38,6 +38,7 @@ _RANGES = np.array([
     (-5, 50), (0, 80), (-5, 50), (0, 80),
     (-0.05, 0.0), (-0.06, 0.06),
 ])
+_LOWER_LEGS = [13, 14, 15, 16]  # knees and ankles
 _REST = np.array([0, 0, 10, 10, 10, 10, 5, 5, 5, 5, 0, 0], dtype=float)
 # The bone whose direction a joint error changes (elbow -> forearm and so on).
 JOINT_BONE = {"l_elbow": "left_forearm", "r_elbow": "right_forearm", "l_knee": "left_shin", "r_knee": "right_shin", "head": "head"}
@@ -87,8 +88,10 @@ class GroupSpec:
     dropout: float = 0.0             # chance that a keypoint comes back with low confidence
     style_deg: float = 0.0           # each member's own small, slow deviation from the choreography
     spins: list = field(default_factory=list)  # (t0, duration_s) in choreography time
-    spin_label_flip: bool = False    # pose model swaps left/right while the back faces the camera
+    spin_label_flip: bool | list = False  # pose model swaps left/right while the back faces the camera (per member if a list)
     occlusions: list = field(default_factory=list)  # Interval: member not visible at all
+    cropped: list = field(default_factory=list)     # Interval: knees and ankles cut off by the frame edge
+    loops: list = field(default_factory=list)       # (t0, t1, step_s, n_poses): a fast repeated groove
     same_body: bool = False          # every member gets member 0's body (position still differs)
     image_size: tuple = (1920, 1080)
     seed: int = 0
@@ -124,16 +127,37 @@ class Choreography:
         return self.poses[k] + s[:, None] * (self.poses[k + 1] - self.poses[k])
 
 
-def make_choreography(duration_s: float, bpm: float, rng: np.random.Generator, hold_prob: float = 0.2, half_beat_prob: float = 0.25) -> Choreography:
+def _vary(pose: np.ndarray, rng: np.random.Generator) -> np.ndarray:
+    """A new key pose: 3 to 7 random joints move somewhere new, the rest stay."""
+    pose = pose.copy()
+    for j in rng.choice(len(JOINTS), size=rng.integers(3, 8), replace=False):
+        pose[j] = rng.uniform(*_RANGES[j])
+    return pose
+
+
+def make_choreography(duration_s: float, bpm: float, rng: np.random.Generator, loops: list = (), hold_prob: float = 0.2, half_beat_prob: float = 0.25) -> Choreography:
+    """Key poses on beats and half beats. A loop (t0, t1, step_s, n) instead cycles through n
+    poses every step_s seconds: a groove that repeats faster than the lag search range, which
+    makes the correlation ambiguous on purpose."""
     beat = 60.0 / bpm
     times, poses = [], []
     t, pose = -1.5, _REST.copy()
     while t < duration_s + 1.5:  # margin so members shifted in time still have choreography
+        loop = next((spec for spec in loops if spec[0] <= t < spec[1]), None)
+        if loop is not None:
+            _, t1, step, count = loop
+            cycle = [_vary(pose, rng) for _ in range(count)]
+            n = 0
+            while t < t1:
+                times.append(t)
+                poses.append(cycle[n % count].copy())
+                n, t = n + 1, t + step
+            pose = cycle[(n - 1) % count].copy()
+            continue
         times.append(t)
         poses.append(pose.copy())
         if rng.random() >= hold_prob:
-            for j in rng.choice(len(JOINTS), size=rng.integers(3, 8), replace=False):
-                pose[j] = rng.uniform(*_RANGES[j])
+            pose = _vary(pose, rng)
         t += beat / 2 if rng.random() < half_beat_prob else beat
     return Choreography(np.array(times), np.array(poses))
 
@@ -238,7 +262,7 @@ def make_group(spec: GroupSpec) -> SyntheticGroup:
     m = spec.n_members
     width, height = spec.image_size
     times = np.arange(int(round(spec.duration_s * spec.fps))) / spec.fps
-    choreography = make_choreography(spec.duration_s, spec.bpm, rng)
+    choreography = make_choreography(spec.duration_s, spec.bpm, rng, loops=spec.loops)
     offsets = spec.offsets_ms if spec.offsets_ms is not None else [0.0] * m
     mirrored = np.array(spec.mirrored if spec.mirrored is not None else [False] * m, dtype=bool)
 
@@ -268,7 +292,8 @@ def make_group(spec: GroupSpec) -> SyntheticGroup:
         if mirrored[i]:
             kp = kp[:, FLIP]
             kp[..., 0] = 2 * bodies[i].center_x - kp[..., 0]
-        if spec.spin_label_flip:
+        flips = spec.spin_label_flip if isinstance(spec.spin_label_flip, (list, tuple)) else [spec.spin_label_flip] * m
+        if flips[i]:
             back = np.cos(yaw) < 0
             kp[back] = kp[back][:, FLIP]
         if spec.noise > 0:
@@ -282,6 +307,11 @@ def make_group(spec: GroupSpec) -> SyntheticGroup:
                 hidden = (times >= gap.t0) & (times < gap.t1)
                 kp[hidden] = np.nan
                 c[hidden] = 0.0
+        for crop in spec.cropped:
+            if crop.member == i:
+                hidden = np.flatnonzero((times >= crop.t0) & (times < crop.t1))
+                kp[np.ix_(hidden, _LOWER_LEGS)] = np.nan
+                c[np.ix_(hidden, _LOWER_LEGS)] = 0.0
         keypoints[i], conf[i] = kp, c
 
     error_bones = []

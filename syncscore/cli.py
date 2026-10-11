@@ -19,9 +19,13 @@ def _analyze(args: argparse.Namespace) -> int:
 
 
 def _validate(args: argparse.Namespace) -> int:
-    load_config(args.config)
-    print(f"validate -> {args.out} - not implemented yet (stage 4)")
-    return 1
+    from .synth.benchmark import run_benchmark
+
+    summary = run_benchmark(args.out, seeds=args.seeds, jobs=args.jobs, config_path=args.config, quick=args.quick)
+    print(f"report: {Path(args.out) / 'report.md'}")
+    for key, value in summary.items():
+        print(f"  {key}: {value:.2f}")
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -36,6 +40,9 @@ def main(argv: list[str] | None = None) -> int:
 
     validate = commands.add_parser("validate", help="Run the synthetic recovery benchmark")
     validate.add_argument("--out", default="results/validate")
+    validate.add_argument("--seeds", type=int, default=3, help="random choreographies per case")
+    validate.add_argument("--jobs", type=int, default=None, help="parallel processes (default: cores - 1)")
+    validate.add_argument("--quick", action="store_true", help="one seed for the failure sweeps")
     validate.set_defaults(run=_validate)
 
     args = parser.parse_args(argv)

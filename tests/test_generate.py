@@ -50,3 +50,19 @@ def test_occlusion_removes_the_member():
 def test_seed_makes_it_reproducible():
     spec = GroupSpec(n_members=3, duration_s=3.0, noise=0.01, dropout=0.05, seed=7)
     assert np.array_equal(make_group(spec).keypoints, make_group(spec).keypoints, equal_nan=True)
+
+
+def test_cropped_member_loses_only_the_lower_legs():
+    from syncscore.synth.generate import Interval
+
+    group = make_group(GroupSpec(n_members=2, duration_s=4.0, fps=30.0, cropped=[Interval(0, 1.0, 3.0)]))
+    assert (group.conf[0, 30:90, 13:17] == 0).all()
+    assert (group.conf[0, 30:90, :13] > 0).all()
+
+
+def test_loop_repeats_with_its_period():
+    group = make_group(GroupSpec(n_members=1, duration_s=12.0, fps=50.0, loops=[(4.0, 10.0, 0.18, 2)]))
+    u = bone_directions(group.keypoints[0], group.conf[0]).u
+    period = 18  # 0.36 s at 50 fps
+    a, b = u[int(5 * 50):int(9 * 50)], u[int(5 * 50) + period:int(9 * 50) + period]
+    assert np.allclose(a, b, atol=1e-6)

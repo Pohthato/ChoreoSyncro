@@ -33,7 +33,7 @@ class TrackingConfig:
 @dataclass
 class SmoothingConfig:
     min_cutoff: float = 1.0
-    beta: float = 0.05
+    beta: float = 1.0
     d_cutoff: float = 1.0
     max_gap_frames: int = 4
 
@@ -51,6 +51,7 @@ class SyncConfig:
     min_motion: float = 0.3
     min_peak: float = 0.5
     min_coverage: float = 0.5
+    min_margin: float = 0.15
     lag_penalty: float = 0.1
     iterations: int = 10
     shape_threshold_deg: float = 15.0

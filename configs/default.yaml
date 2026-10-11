@@ -13,8 +13,8 @@ tracking:
   crossing_iou: 0.3           # box overlap that counts as two members crossing
 
 smoothing:
-  min_cutoff: 1.0             # One Euro: lower = smoother when still
-  beta: 0.05                  # One Euro: higher = less lag during fast motion
+  min_cutoff: 1.0             # One Euro: lower = smoother when still (Hz). Tuned in docs/walkthrough.md
+  beta: 1.0                   # One Euro: higher = less smoothing during fast motion (per torso length/s)
   d_cutoff: 1.0
   max_gap_frames: 4           # interpolate holes up to this long, leave longer ones missing
 
@@ -28,6 +28,7 @@ sync:
   min_motion: 0.3             # group's RMS bone angular speed (rad/s); stiller windows carry no timing
   min_peak: 0.5               # cross-correlation peak below this = no reliable offset
   min_coverage: 0.5           # share of the window in which the member must be visible
+  min_margin: 0.15            # best peak must beat any separate peak by this much, else ambiguous
   lag_penalty: 0.1            # Viterbi cost per 100 ms of jump between neighbouring windows
   iterations: 10              # max align -> consensus -> re-estimate passes (stops early once stable)
   shape_threshold_deg: 15.0   # a body part counts as "off" above this mean angle

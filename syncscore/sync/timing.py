@@ -27,7 +27,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
-from numpy.lib.stride_tricks import sliding_window_view
 
 
 @dataclass
@@ -88,6 +87,7 @@ class TimingResult:
     peak: np.ndarray      # (K,) normalised correlation at the chosen lag (1 = identical motion)
     motion: np.ndarray    # (K,) RMS angular speed of the reference, rad/s
     coverage: np.ndarray  # (K,) share of the window where both member and reference were seen
+    margin: np.ndarray    # (K,) chosen peak minus the best separate peak (small = ambiguous)
     reliable: np.ndarray  # (K,) bool
     scores: np.ndarray    # (K, 2L+1) correlation per lag
 
@@ -104,7 +104,7 @@ def _flatten(v: np.ndarray, w: np.ndarray, bones: np.ndarray | None) -> tuple[np
 def estimate_lags(
     member_v: np.ndarray, member_w: np.ndarray, ref_v: np.ndarray, ref_w: np.ndarray, windows: Windows,
     max_lag: int, penalty_per_step: float, min_motion: float, min_peak: float, min_coverage: float,
-    bones: np.ndarray | None = None,
+    min_margin: float = 0.0, bones: np.ndarray | None = None,
 ) -> TimingResult:
     """Lag of the member relative to the reference in every window (both on the same frame clock).
 
@@ -113,26 +113,34 @@ def estimate_lags(
     """
     a, wa = _flatten(member_v, member_w, bones)
     b, wb = _flatten(ref_v, ref_w, bones)
+    frames = len(b)
     pad = ((max_lag, max_lag), (0, 0))
     a, wa = np.pad(a, pad), np.pad(wa, pad)
     n, length = len(windows.starts), windows.length
     lags = 2 * max_lag + 1
-    scores = np.full((n, lags), np.nan)
-    motion, coverage = np.zeros(n), np.zeros(n)
-    for k, start in enumerate(windows.starts):
-        rb, rwb = b[start:start + length], wb[start:start + length]
-        # (lags, channels, length) -> (lags, length, channels): the member at every lag.
-        seg = sliding_window_view(a[start:start + length + 2 * max_lag], length, axis=0).transpose(0, 2, 1)
-        seg_w = sliding_window_view(wa[start:start + length + 2 * max_lag], length, axis=0).transpose(0, 2, 1)
-        joint = seg_w * rwb[None]
-        num = np.sum(joint * seg * rb[None], axis=(1, 2))
-        den = np.sqrt(np.sum(joint * seg**2, axis=(1, 2)) * np.sum(joint * rb[None] ** 2, axis=(1, 2)))
-        with np.errstate(invalid="ignore", divide="ignore"):
-            scores[k] = np.where(den > 0, num / den, np.nan)
-        ref_weight = rwb.sum()
-        motion[k] = np.sqrt(2 * np.sum(rwb * rb**2) / ref_weight) if ref_weight > 0 else 0.0
-        both = (seg_w[max_lag] > 0) & (rwb > 0)
-        coverage[k] = both.any(axis=1).mean()
+    starts = windows.starts
+
+    def window_sums(per_frame: np.ndarray) -> np.ndarray:
+        # Windows overlap (2 s long, every 0.25 s), so sum each frame once and take every
+        # window's total as a difference of the running sum.
+        total = np.concatenate([np.zeros((1,) + per_frame.shape[1:]), np.cumsum(per_frame, axis=0)])
+        return total[starts + length] - total[starts]
+
+    num, energy_a, energy_b = np.empty((frames, lags)), np.empty((frames, lags)), np.empty((frames, lags))
+    for j in range(lags):  # j = max_lag + lag; the member shifted by `lag` frames
+        seg, seg_w = a[j:j + frames], wa[j:j + frames]
+        joint = seg_w * wb
+        num[:, j] = np.sum(joint * seg * b, axis=1)
+        energy_a[:, j] = np.sum(joint * seg**2, axis=1)
+        energy_b[:, j] = np.sum(joint * b**2, axis=1)
+    num, energy_a, energy_b = window_sums(num), window_sums(energy_a), window_sums(energy_b)
+    den = np.sqrt(energy_a * energy_b)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        scores = np.where(den > 1e-12, num / den, np.nan)
+        ref_weight = window_sums(wb.sum(axis=1))
+        motion = np.where(ref_weight > 0, np.sqrt(2 * window_sums(np.sum(wb * b**2, axis=1)) / ref_weight), 0.0)
+    both = ((wa[max_lag:max_lag + frames] > 0) & (wb > 0)).any(axis=1)
+    coverage = window_sums(both.astype(float)) / length
 
     informative = np.isfinite(scores).any(axis=1) & (motion >= min_motion)
     path_scores = np.where(informative[:, None], np.nan_to_num(scores, nan=-1.0), 0.0)
@@ -140,11 +148,32 @@ def estimate_lags(
 
     lag = np.full(n, np.nan)
     peak = np.full(n, np.nan)
+    margin = np.full(n, np.nan)
     for k, j in enumerate(path):
-        if not np.isfinite(scores[k]).any():
+        row = scores[k]
+        if not np.isfinite(row).any():
             continue
-        frac = parabolic_peak(scores[k, j - 1], scores[k, j], scores[k, j + 1]) if 0 < j < lags - 1 else 0.0
+        frac = parabolic_peak(row[j - 1], row[j], row[j + 1]) if 0 < j < lags - 1 else 0.0
         lag[k] = j - max_lag + frac
-        peak[k] = scores[k, j]
-    reliable = informative & np.isfinite(lag) & (np.nan_to_num(peak) >= min_peak) & (coverage >= min_coverage)
-    return TimingResult(lag=lag, peak=peak, motion=motion, coverage=coverage, reliable=reliable, scores=scores)
+        peak[k] = row[j]
+        margin[k] = row[j] - _best_other_peak(row, j)
+    reliable = (informative & np.isfinite(lag) & (np.nan_to_num(peak) >= min_peak) & (coverage >= min_coverage)
+                & (np.nan_to_num(margin, nan=-1.0) >= min_margin))
+    return TimingResult(lag=lag, peak=peak, motion=motion, coverage=coverage, margin=margin, reliable=reliable, scores=scores)
+
+
+def _best_other_peak(row: np.ndarray, chosen: int) -> float:
+    """Highest local maximum of the correlation that is a separate peak from the chosen one.
+
+    A move that repeats faster than the search range (a fast groove) gives several equally good
+    lags. Then the timing is ambiguous and must not be reported as if it were known."""
+    filled = np.nan_to_num(row, nan=-1.0)
+    # Walk down both sides of the chosen peak; anything beyond the valleys is another peak.
+    left = chosen
+    while left > 0 and filled[left - 1] <= filled[left]:
+        left -= 1
+    right = chosen
+    while right < len(filled) - 1 and filled[right + 1] <= filled[right]:
+        right += 1
+    others = np.concatenate([filled[:left], filled[right + 1:]])
+    return float(others.max()) if others.size else -1.0

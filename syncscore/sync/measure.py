@@ -111,7 +111,7 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
     centers, n_windows = windows.centers, len(windows.starts)
     frame_ms = 1000.0 / fps
     penalty = sc.lag_penalty * frame_ms / 100.0  # config is per 100 ms of jump
-    search = dict(max_lag=max_lag, penalty_per_step=penalty, min_motion=sc.min_motion, min_peak=sc.min_peak, min_coverage=sc.min_coverage)
+    search = dict(max_lag=max_lag, penalty_per_step=penalty, min_motion=sc.min_motion, min_peak=sc.min_peak, min_coverage=sc.min_coverage, min_margin=sc.min_margin)
 
     fixed, auto = _mirror_flags(config.features.mirror, members)
     mirrored = np.repeat(fixed[:, None], n_windows, axis=1)

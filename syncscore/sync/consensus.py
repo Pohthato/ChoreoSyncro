@@ -11,8 +11,6 @@ of the other members. Two choices matter:
 """
 from __future__ import annotations
 
-import warnings
-
 import numpy as np
 
 _EPS = 1e-9
@@ -41,6 +39,19 @@ def warp(u: np.ndarray, w: np.ndarray, shift: np.ndarray) -> tuple[np.ndarray, n
     return np.where(known[..., None], out, np.nan), np.where(known, weight, 0.0)
 
 
+def nanmedian_first_axis(x: np.ndarray) -> np.ndarray:
+    """Median over axis 0 ignoring NaN (NaN where all are NaN).
+
+    Same result as np.nanmedian(x, axis=0), but sorting is much faster than NumPy's
+    masked-array path when axis 0 is short (a handful of members).
+    """
+    ordered = np.sort(x, axis=0)  # NaNs sort last
+    count = np.isfinite(x).sum(axis=0)
+    lo = np.take_along_axis(ordered, np.maximum((count - 1) // 2, 0)[None], axis=0)[0]
+    hi = np.take_along_axis(ordered, np.maximum(count // 2, 0)[None], axis=0)[0]
+    return np.where(count > 0, (lo + hi) / 2, np.nan)
+
+
 def leave_one_out_median(u: np.ndarray, w: np.ndarray, min_weight: float = 0.05, min_members: int = 1) -> tuple[np.ndarray, np.ndarray]:
     """For every member i, the median direction of all other members.
 
@@ -54,15 +65,14 @@ def leave_one_out_median(u: np.ndarray, w: np.ndarray, min_weight: float = 0.05,
     weights = np.where(valid, w, np.nan)
     out = np.full_like(u, np.nan)
     out_w = np.zeros_like(w)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", RuntimeWarning)  # all-NaN slices are expected
-        for i in range(members):
-            others = [j for j in range(members) if j != i]
-            med = np.nanmedian(values[others], axis=0)
-            norm = np.linalg.norm(med, axis=-1, keepdims=True)
+    for i in range(members):
+        others = [j for j in range(members) if j != i]
+        med = nanmedian_first_axis(values[others])
+        norm = np.linalg.norm(med, axis=-1, keepdims=True)
+        with np.errstate(invalid="ignore"):
             med = med / np.where(norm > _EPS, norm, np.nan)
-            count = valid[others].sum(axis=0)
-            ok = (count >= min_members) & np.isfinite(med[..., 0])
-            out[i] = np.where(ok[..., None], med, np.nan)
-            out_w[i] = np.where(ok, np.nanmedian(weights[others], axis=0), 0.0)
+        count = valid[others].sum(axis=0)
+        ok = (count >= min_members) & np.isfinite(med[..., 0])
+        out[i] = np.where(ok[..., None], med, np.nan)
+        out_w[i] = np.where(ok, nanmedian_first_axis(weights[others]), 0.0)
     return out, out_w

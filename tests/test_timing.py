@@ -1,4 +1,6 @@
 """Unit tests for the alignment math, each on a tiny hand-built case."""
+import warnings
+
 import numpy as np
 import pytest
 
@@ -85,3 +87,25 @@ def test_estimate_lags_recovers_a_shift_of_a_random_smooth_signal():
     result = estimate_lags(mv, mw, rv, rw, make_windows(frames, 60, 15), max_lag=12, penalty_per_step=0.01, min_motion=0.0, min_peak=0.0, min_coverage=0.0)
     inner = result.lag[3:-3]
     assert np.allclose(inner, true_lag, atol=0.15)
+
+
+def test_fast_nanmedian_matches_numpy():
+    from syncscore.sync.consensus import nanmedian_first_axis
+
+    rng = np.random.default_rng(3)
+    for members in (1, 2, 3, 4, 6):
+        x = rng.normal(size=(members, 50, 3))
+        x[rng.random(x.shape) < 0.3] = np.nan
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            expected = np.nanmedian(x, axis=0)
+        assert np.allclose(nanmedian_first_axis(x), expected, equal_nan=True)
+
+
+def test_a_second_equal_peak_makes_the_window_ambiguous():
+    from syncscore.sync.timing import _best_other_peak
+
+    single = np.array([0.0, 0.2, 0.6, 1.0, 0.6, 0.2, 0.0, -0.1, 0.0])
+    double = np.array([0.0, 0.9, 0.5, 1.0, 0.6, 0.2, 0.0, -0.1, 0.0])
+    assert single[3] - _best_other_peak(single, 3) > 0.9
+    assert double[3] - _best_other_peak(double, 3) < 0.15
