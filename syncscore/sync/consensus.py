@@ -8,6 +8,12 @@ of the other members. Two choices matter:
   error.
 - **Median, not mean.** If one of the others holds a limb wrong, the mean is dragged toward
   them and everybody else then looks a little wrong. The median ignores a single outlier.
+
+Shape uses a different reference, the median of the *whole* group including the member
+(`group_median`). A median that includes you works like a vote: in a trio, the two who agree
+outvote the one who doesn't. Leave-one-out leaves only two others, and the median of two is
+their average, so one member's wrong arm would show up half-size on everyone else. With two
+members no reference can tell who is wrong, only that they differ.
 """
 from __future__ import annotations
 
@@ -50,6 +56,18 @@ def nanmedian_first_axis(x: np.ndarray) -> np.ndarray:
     lo = np.take_along_axis(ordered, np.maximum((count - 1) // 2, 0)[None], axis=0)[0]
     hi = np.take_along_axis(ordered, np.maximum(count // 2, 0)[None], axis=0)[0]
     return np.where(count > 0, (lo + hi) / 2, np.nan)
+
+
+def group_median(u: np.ndarray, w: np.ndarray, min_weight: float = 0.05) -> tuple[np.ndarray, np.ndarray]:
+    """Median direction of all members, (M, T, B, 2) -> (T, B, 2), with its weight (T, B)."""
+    valid = w > min_weight
+    med = nanmedian_first_axis(np.where(valid[..., None], u, np.nan))
+    norm = np.linalg.norm(med, axis=-1, keepdims=True)
+    with np.errstate(invalid="ignore"):
+        med = med / np.where(norm > _EPS, norm, np.nan)
+    ok = valid.any(axis=0) & np.isfinite(med[..., 0])
+    weight = np.where(ok, nanmedian_first_axis(np.where(valid, w, np.nan)), 0.0)
+    return np.where(ok[..., None], med, np.nan), weight
 
 
 def leave_one_out_median(u: np.ndarray, w: np.ndarray, min_weight: float = 0.05, min_members: int = 1) -> tuple[np.ndarray, np.ndarray]:

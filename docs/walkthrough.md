@@ -129,3 +129,63 @@ windows. Both the fixed and auto modes are tested on a mirrored member who is al
 
 **Likely interview question:** *"What does an offset of +40 ms mean?"* That member performs
 each movement 40 ms after the group's median member during that window. Negative means early.
+
+## Stage 4: proving it works (`syncscore validate`)
+
+**Smoothing first** (`pose/smooth.py`). Real keypoints jitter, so the benchmark runs the same
+smoother the video path uses.
+- **One Euro filter:** a low-pass filter whose cut-off rises with speed. Heavy smoothing when a
+  joint is still (all you see there is jitter), light smoothing in fast moves (where lag hurts).
+- **It must add no lag.** A normal (causal) filter delays its output. The test measured
+  **67 ms** of delay with the first settings, as big as the offsets being measured, and the
+  delay depends on how fast each member moves. So the filter runs forward and backward and the
+  two are averaged: the delays cancel (under 1 ms, tested).
+- **Tuned, not guessed.** The first defaults (min_cutoff 1, beta 0.05) kept only 31% of a hit's
+  peak speed. A grid search against clean synthetic keypoints picked min_cutoff=1, beta=1:
+  keypoint error 3.8 → 1.9 px, bone-angle noise 3.5° → 1.4°, 93% of peak speed kept.
+  Caveat: tuned on Gaussian noise, and real pose-model jitter is not Gaussian.
+
+**The benchmark** (`synth/benchmark.py`). Synthetic groups with planted errors go through the
+full pipeline. It reports three numbers, and the third is the important one:
+- *window error*: how far off the measured offset is, on windows the method trusted,
+- *coverage*: how many windows it was willing to measure,
+- *confidently wrong*: trusted windows off by more than 30 ms. Saying "I don't know" is fine;
+  being wrong and sure is the failure that matters.
+
+**Two things the benchmark caught and that were fixed:**
+1. **Repeated fast grooves.** When a move repeats faster than the ±400 ms search (every
+   0.36 s), the correlation has several equally high peaks (measured: +33, −327 and +393 ms
+   all scored 0.98-1.0). The method was choosing one and calling it reliable: 15% confidently
+   wrong. No smoothing can resolve a truly periodic signal, so the fix is honesty: if a separate
+   peak scores within 0.15 of the chosen one, the window is marked *ambiguous* and not
+   reported. Confidently wrong 15% → 1%.
+2. **Spins looked too good** because the first simulation swapped left/right labels for
+   every member identically, so the errors cancelled. Real pose models are inconsistent, so a
+   harsher case (labels swap for 2 of 5 members) was added and is reported as a real failure:
+   69% coverage, 2% confidently wrong.
+
+## Stage 5: outputs (`syncscore demo`, and the same writer for `analyze`)
+
+- `summary.json` / `summary.csv`: per member, overall and per 8 s section: mean offset,
+  mean |offset|, spread, share of time in sync (|offset| ≤ 35 ms), timing and pose error per
+  body part, the body part most often off, the 3 worst timing moments and the 3 worst pose
+  moments (one per second, named in the member's own left/right even if mirrored).
+- `heatmap.png`: members by time, blue = ahead, red = behind, grey = in sync. **Windows that
+  could not be measured are hatched**, so "no reading" never looks like "in sync".
+- `report_cards/M*.png`: one page per member.
+- `skeletons.mp4`: skeletons only, dark background, green / amber / red / grey status with a
+  text label, and a pink halo on any bone whose pose is off by more than 15°. No source pixels
+  are drawn, so it can be published.
+
+**Two more design fixes found by tests here:**
+- *"Body part most often off" averaged a part's bones*, so one shin 30° off counted as legs
+  7.5° off and went unreported. A part is now judged by its **worst bone**.
+- *With 3 members, leave-one-out leaks errors.* Each member's reference was the median of 2
+  others, which is their average, so one member's 30° error showed up as 15° on the other
+  two. Shape now uses the median of the **whole group including the member**. That works like a
+  vote: in a trio the two who agree outvote the third. Timing keeps leave-one-out, where the
+  iteration makes it exact. With 2 members no method can say who is wrong, only that they differ.
+
+**Likely interview question:** *"How do you know the visual isn't lying?"* Every colour has a
+text label next to it, "no reading" has its own look, and the tests read back
+`summary.json` to check it names the planted errors (`tests/test_outputs.py`).

@@ -17,7 +17,8 @@ benchmark tests exactly the code that runs on real footage.
    reference; later passes compare against a consensus whose members are already lined up,
    which is sharper.
 3. Per body part: the same lag search on just that part's bones.
-4. Shape: move the consensus onto the member's own clock and measure the angle per bone.
+4. Shape: move the whole group's median pose onto the member's own clock and measure the
+   angle per bone (see consensus.py for why shape includes the member and timing does not).
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ import numpy as np
 
 from ..config import Config
 from ..features.bones import BONE_NAMES, PART_OF_BONE, PARTS, bone_directions, mirror_keypoints
-from .consensus import leave_one_out_median, warp
+from .consensus import group_median, leave_one_out_median, warp
 from .shape import shape_errors
 from .timing import Windows, estimate_lags, make_windows, velocity
 
@@ -132,7 +133,9 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
     def consensus_now():
         curves = np.stack([_curve(lag[i], reliable[i], centers, n_frames) for i in range(members)])
         aligned = [warp(*chosen(i)[:2], curves[i]) for i in range(members)]
-        c, cw = leave_one_out_median(np.stack([a[0] for a in aligned]), np.stack([a[1] for a in aligned]))
+        stacked_u, stacked_w = np.stack([a[0] for a in aligned]), np.stack([a[1] for a in aligned])
+        c, cw = leave_one_out_median(stacked_u, stacked_w)
+        consensus_now.aligned = (stacked_u, stacked_w)
         return curves, c, cw
 
     for iteration in range(max(1, sc.iterations)):
@@ -169,6 +172,7 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
                 mirrored[i] = _majority(better, span=5)
 
     curves, cons, cons_w = consensus_now()
+    shape_ref, shape_ref_w = group_median(*consensus_now.aligned)  # whole group: a vote, see consensus.py
     part_lag = np.full((members, len(PARTS), n_windows), np.nan)
     part_ok = np.zeros((members, len(PARTS), n_windows), dtype=bool)
     bone_deg = np.full((members, n_frames, len(BONE_NAMES)), np.nan)
@@ -181,7 +185,7 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
             result = estimate_lags(v, vw, cv, cvw, windows, bones=bones, **search)
             part_lag[i, p] = result.lag  # the consensus is on the group clock, so this is the part's own offset
             part_ok[i, p] = result.reliable
-        own_u, own_w = warp(cons[i], cons_w[i], -curves[i])  # consensus on the member's clock
+        own_u, own_w = warp(shape_ref, shape_ref_w, -curves[i])  # the group's pose on the member's clock
         bone_deg[i], part_deg[i] = shape_errors(u, w, own_u, own_w)
 
     return SyncResult(

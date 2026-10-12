@@ -32,6 +32,12 @@ CRITICAL = "#d03b3b"
 SHAPE_FLAG = "#e87ba4"  # bones with a large pose error, drawn as a halo
 
 
+def signed_ms(value: float) -> str:
+    """'+12 ms' / '-8 ms' / '0 ms' (never '-0')."""
+    rounded = int(round(value))
+    return "0 ms" if rounded == 0 else f"{rounded:+d} ms"
+
+
 def apply_style() -> None:
     import matplotlib as mpl
 
