@@ -138,6 +138,8 @@ def _validate(args: argparse.Namespace) -> int:
 
 def _demo(args: argparse.Namespace) -> int:
     """A synthetic 5-member group with known errors, through every output."""
+    import numpy as np
+
     from .outputs import write_outputs
     from .pipeline import analyze_keypoints
     from .synth.generate import GroupSpec, LimbError, make_group
@@ -152,6 +154,10 @@ def _demo(args: argparse.Namespace) -> int:
     group = make_group(spec)
     result, xy, conf = analyze_keypoints(group.keypoints, group.conf, group.fps, config, names=group.names)
     write_outputs(result, xy, conf, Path(args.out), config, spec.image_size, gif_seconds=8.0)
+    from .viz.smoothing_plot import render_smoothing_plot
+
+    raw = np.where((group.conf[0, :, 9] >= config.pose.min_keypoint_conf)[:, None], group.keypoints[0, :, 9], np.nan)
+    render_smoothing_plot(raw, xy[0, :, 9], group.fps, Path(args.out) / "smoothing_example.png", "M1 left wrist (synthetic, 1% noise): raw vs smoothed")
     print(f"demo written to {args.out} (truth: M2 0 -> +120 ms after 16 s, M3 -33 ms, M4 +67 ms, M5 left elbow +25 deg 6-14 s)")
     return 0
 
