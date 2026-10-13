@@ -162,7 +162,18 @@ def _demo(args: argparse.Namespace) -> int:
     return 0
 
 
+def _safe_console() -> None:
+    """Never crash on printing: Windows consoles are often cp1252 and video names are often not
+    (e.g. Korean titles). Unprintable characters become '?' instead of raising."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+
 def main(argv: list[str] | None = None) -> int:
+    _safe_console()
     parser = argparse.ArgumentParser(prog="syncscore", description="Measure dance-group synchronization from one video.")
     parser.add_argument("--config", default=None, help="YAML config (default: configs/default.yaml)")
     commands = parser.add_subparsers(dest="command", required=True)

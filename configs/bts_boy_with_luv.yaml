@@ -1,0 +1,4 @@
+# Settings for the BTS "Boy With Luv" dance practice clip (fixed camera, 7 members).
+# Anything not listed here uses the defaults in syncscore/config.py.
+tracking:
+  members: 7
