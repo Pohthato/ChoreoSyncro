@@ -189,3 +189,34 @@ full pipeline. It reports three numbers, and the third is the important one:
 **Likely interview question:** *"How do you know the visual isn't lying?"* Every colour has a
 text label next to it, "no reading" has its own look, and the tests read back
 `summary.json` to check it names the planted errors (`tests/test_outputs.py`).
+
+## Stage 6: from video to member tracks (`syncscore analyze`)
+
+**Pose** (`pose/extract.py`). Ultralytics **YOLO11-pose**: one network finds every person and
+their 17 keypoints in one pass and runs on a laptop CPU. ByteTrack comes in the same `track()`
+call. The badminton worker uses the same model family, so it's the same front end. RTMPose
+is a bit more accurate in crowds but needs a separate detector and MMCV, which is painful to
+install on a Windows CPU. Per detection we keep the box, keypoints and a 32-number torso
+colour histogram, **never pixels**.
+
+**Real timestamps** (`pose/video.py`). Phone video is often variable frame rate. Assuming
+frame k sits at k/fps would add the recording's own jitter to every offset, so each frame's
+presentation time is read and keypoints are resampled onto an even clock when spacing is
+uneven.
+
+**One track per member** (`pose/tracks.py`). ByteTrack fails in two ways:
+- *Fragmentation:* after an occlusion a member returns with a new ID. Fixed by stitching. Seed N
+  member slots with the tracklets visible together the longest, then attach the rest (longest
+  first) to the slot they fit: no time overlap, similar torso colour, nearby position if the gap
+  is short. Leftovers (crew, backup dancers) are dropped. Gaps are left empty, never invented.
+- *Swaps:* two members cross and their IDs exchange. Flagged when, after a crossing, each track
+  looks more like the *other* member's clothes than its own. With matching outfits this misses
+  swaps, so `tracking_report.json` says so, and the **true** swap rate comes from
+  `syncscore audit` (about 30 sampled frames with labels drawn: you write who each label really
+  is) and `syncscore audit-score` (accuracy, switches, switches per minute).
+
+Members are named M1…MN left to right by their median position, so names are readable and stable.
+
+**Likely interview question:** *"How often do IDs swap?"* Two numbers, kept apart on purpose:
+the automatic *suspected* swaps (cheap, misses look-alikes) and the hand-audited rate (the
+real one). The tool never presents the heuristic as the truth.
