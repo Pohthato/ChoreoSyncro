@@ -194,7 +194,7 @@ text label next to it, "no reading" has its own look, and the tests read back
 
 **Pose** (`pose/extract.py`). Ultralytics **YOLO11-pose**: one network finds every person and
 their 17 keypoints in one pass and runs on a laptop CPU. ByteTrack comes in the same `track()`
-call. The badminton worker uses the same model family, so it's the same front end. RTMPose
+call. Optiqen's badminton worker uses the same model family, so it's the same front end. RTMPose
 is a bit more accurate in crowds but needs a separate detector and MMCV, which is painful to
 install on a Windows CPU. Per detection we keep the box, keypoints and a 32-number torso
 colour histogram, **never pixels**.

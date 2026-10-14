@@ -42,7 +42,7 @@ flowchart LR
 
 | step | what | why |
 |---|---|---|
-| pose | Ultralytics **YOLO11-pose** (`yolo11s-pose.pt`, CPU) | one pass finds every person and their COCO-17 keypoints; ByteTrack is built in; same family as the badminton project. RTMPose is somewhat more accurate in crowds but needs a separate detector and the MMCV stack. |
+| pose | Ultralytics **YOLO11-pose** (`yolo11s-pose.pt`, CPU) | one pass finds every person and their COCO-17 keypoints; ByteTrack is built in; same family as Optiqen's pose stage. RTMPose is somewhat more accurate in crowds but needs a separate detector and the MMCV stack. |
 | tracking | **ByteTrack**, then a stitching pass ([pose/tracks.py](syncscore/pose/tracks.py)) | rejoins members who come back with a new ID after an occlusion (by torso colour and position), drops non-members, flags crossings after which two tracks look like they swapped clothes. |
 | smoothing | **One Euro filter**, run forward and backward and averaged ([pose/smooth.py](syncscore/pose/smooth.py)) | removes jitter while keeping fast hits (93% of peak speed). A causal filter added 67 ms of lag in tests, as big as the offsets being measured; the two-way average cancels it (< 1 ms). |
 | comparable bodies | **bone direction unit vectors** ([features/bones.py](syncscore/features/bones.py)) | a unit vector has no position, scale or length, so a tall and a short member doing the same move are identical (tested to 1e-9). Optional **mirroring** (swap left/right, reflect x) for mirrored choreography: off, per member, or auto per window. |
@@ -123,17 +123,20 @@ Real accuracy is bounded by the pose model.
   (the price of robustness in small groups). Errors under about 5° are at the noise floor.
 - Thresholds (35 ms "in sync", 135 ms "off", 15° "pose off") are choices, not standards.
 
-## Connection to the badminton project
+## Built on Optiqen
 
-This is the same pipeline in a different domain. The badminton worker
-(`omnicourt_v5_flowfix/worker`) runs Ultralytics YOLO pose per frame, selects the athlete,
-gates every measurement on keypoint confidence, and validates its geometry and hit detection
-against synthetic data with known answers (`worker/geometry/synthetic.py`,
-`worker/evaluation/hits_benchmark.py`). It also withdrew an earlier hit score when a harder
-benchmark didn't support it. SyncScore reuses the pose front end and that discipline. What's
-new is the domain problem: comparing *several* bodies against each other instead of one athlete
-against a court, which needs body-invariant features, a robust group reference, and separating
-timing from shape.
+SyncScore builds on [Optiqen](https://github.com/Pohthato/optiqen), my badminton analysis
+project: the same pose pipeline in a different domain. Optiqen's worker runs Ultralytics YOLO
+pose per frame, selects the athlete, gates every measurement on keypoint confidence, and
+validates its geometry and hit detection against synthetic data with known answers
+(`worker/geometry/synthetic.py`, `worker/evaluation/hits_benchmark.py`). It also withdrew an
+earlier hit score when a harder benchmark didn't support it.
+
+What carries over is the design: the YOLO-pose front end with COCO-17 keypoints, confidence
+gating, and validating against planted ground truth before trusting a number. The SyncScore
+code itself is new; no Optiqen code is copied. What's new is the domain problem: comparing
+*several* bodies against each other instead of one athlete against a court, which needs
+body-invariant features, a robust group reference, and separating timing from shape.
 
 ## Running it
 

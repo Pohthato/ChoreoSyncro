@@ -3,7 +3,7 @@
 Why YOLO11-pose: it is one network that finds every person *and* their 17 COCO keypoints in a
 single pass (bottom-up speed with top-down accuracy for well-separated dancers), it runs on a
 laptop CPU, and ByteTrack is built into the same `track()` call. It is also the model family
-of the badminton project, so this really is the same pipeline in a different domain.
+of Optiqen (the badminton project), so this really is the same pipeline in a different domain.
 RTMPose (MMPose) is somewhat more accurate on crowded scenes, but needs a separate detector and
 the MMCV stack, which is hard to install on a Windows CPU.
 
