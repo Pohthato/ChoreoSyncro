@@ -93,6 +93,8 @@ def write_report(rows: list[dict], out: Path) -> dict:
     sweep_table("spin", "Fast spins", "Everyone spins 360° in 0.8 s, three times. In 2D the body flattens to a line mid-spin. *Labels swap*: the pose model also swaps left and right while the back faces the camera.", "affected")
     sweep_table("repeated_groove", "Repeated fast groove", "18 s of a 2-pose groove repeating every 0.36 s, shorter than the ±400 ms search, so the correlation has several equal peaks. Compares the Viterbi jump penalty off and on.", "affected")
 
+    sweep_table("glitches", "Pose-model glitches", "2% of frames per member carry a glitch seen on real footage: left/right labels of the arms or legs swapped for 1-2 frames, or a wrist misplaced for a frame, all at high confidence. Compares the pipeline without and with glitch handling.", "all")
+
     limb_groups = _group(rows, "limb_error")
     if limb_groups:
         lines += ["", "## Size of a pose error", "", "Member 2's left elbow off by N degrees for 20 s (realistic noise).", "",

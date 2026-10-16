@@ -104,8 +104,8 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
 
     plain = [bone_directions(xy[i], conf[i], min_conf) for i in range(members)]
     flipped = [bone_directions(*mirror_keypoints(xy[i], conf[i]), min_conf) for i in range(members)]
-    vel_plain = [velocity(f.u, f.weight, fps) for f in plain]
-    vel_flipped = [velocity(f.u, f.weight, fps) for f in flipped]
+    vel_plain = [velocity(f.u, f.weight, fps, sc.max_bone_speed_deg_s) for f in plain]
+    vel_flipped = [velocity(f.u, f.weight, fps, sc.max_bone_speed_deg_s) for f in flipped]
 
     max_lag = max(1, int(round(sc.max_lag_ms / 1000 * fps)))
     windows = make_windows(n_frames, int(round(sc.window_s * fps)), int(round(sc.hop_s * fps)))
@@ -144,7 +144,7 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
         was_reliable = reliable.copy()
         for i in range(members):
             _, _, v, vw = chosen(i)
-            cv, cvw = velocity(cons[i], cons_w[i], fps)
+            cv, cvw = velocity(cons[i], cons_w[i], fps, sc.max_bone_speed_deg_s)
             result = estimate_lags(v, vw, cv, cvw, windows, **search)
             new[i], reliable[i], peak[i], motion[i] = result.lag, result.reliable, result.peak, result.motion
         with warnings.catch_warnings():
@@ -179,7 +179,7 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
     part_deg = np.full((members, n_frames, len(PARTS)), np.nan)
     for i in range(members):
         u, w, v, vw = chosen(i)
-        cv, cvw = velocity(cons[i], cons_w[i], fps)
+        cv, cvw = velocity(cons[i], cons_w[i], fps, sc.max_bone_speed_deg_s)
         for p in range(len(PARTS)):
             bones = np.flatnonzero(PART_OF_BONE == p)
             result = estimate_lags(v, vw, cv, cvw, windows, bones=bones, **search)

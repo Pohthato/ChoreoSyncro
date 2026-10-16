@@ -60,3 +60,38 @@ def test_short_gaps_are_filled_and_long_ones_kept():
     assert np.allclose(filled[5:8, 0, 0], [5, 6, 7])
     assert was_filled[5:8, 0].all()
     assert np.isnan(filled[10:16]).all()
+
+
+def test_a_one_frame_left_right_swap_is_repaired_but_a_real_turn_is_not():
+    from syncscore.pose.smooth import repair_left_right_swaps
+
+    frames = 30
+    xy = np.zeros((frames, 17, 2))
+    xy[:, [5, 7, 9]] = [[100, 100], [100, 150], [100, 200]]   # left arm on the right of the image
+    xy[:, [6, 8, 10]] = [[0, 100], [0, 150], [0, 200]]
+    xy[:, 11:17] = np.array([[100, 250], [0, 250], [100, 300], [0, 300], [100, 350], [0, 350]])
+    conf = np.ones((frames, 17))
+    glitch = xy.copy()
+    glitch[10, [5, 7, 9, 6, 8, 10]] = xy[10, [6, 8, 10, 5, 7, 9]]  # the model swaps the arms for one frame
+    fixed, _, repairs = repair_left_right_swaps(glitch, conf, min_conf=0.3)
+    assert repairs == 1
+    assert np.allclose(fixed, xy)
+    # A real half turn: the arms move across gradually, so every frame is close to the last one.
+    turn = xy.copy()
+    for t in range(frames):
+        s = np.cos(np.pi * t / (frames - 1))  # 1 -> -1
+        turn[t, [5, 7, 9], 0] = 50 + 50 * s
+        turn[t, [6, 8, 10], 0] = 50 - 50 * s
+    _, _, repairs = repair_left_right_swaps(turn, conf, min_conf=0.3)
+    assert repairs == 0
+
+
+def test_speed_limit_marks_a_flip_unknown():
+    from syncscore.sync.timing import velocity
+
+    angles = np.linspace(0, 1, 20)
+    angles[10] += np.pi  # a one-frame 180 degree flip
+    u = np.stack([np.cos(angles), np.sin(angles)], axis=-1)[:, None, :]
+    v, vw = velocity(u, np.ones((20, 1)), fps=30.0, max_speed_deg_s=1800.0)
+    assert (vw[9:12, 0] == 0).all()
+    assert (vw[3:8, 0] > 0).all()

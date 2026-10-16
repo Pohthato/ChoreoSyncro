@@ -220,3 +220,28 @@ Members are named M1…MN left to right by their median position, so names are r
 **Likely interview question:** *"How often do IDs swap?"* Two numbers, kept apart on purpose:
 the automatic *suspected* swaps (cheap, misses look-alikes) and the hand-audited rate (the
 real one). The tool never presents the heuristic as the truth.
+
+## Stage 6b: what the real clip taught
+
+The first real run (BTS dance practice, 3:50, 7 members) gave **3% reliable windows and a 0.19
+median correlation**. A professional group doesn't look like that, so this was debugged, not
+tuned.
+
+- **Pose glitches.** About 1% of frames carried about 90% of the velocity "energy" of the
+  shoulder line, hip line and ears: the pose model swapping left and right for a frame when a
+  dancer turns side-on, or briefly putting a wrist somewhere else, at high confidence.
+  Correlation squares velocity, so those few frames drowned the real motion. Fixes: undo swaps
+  that **revert within 2 frames**, and mark bone turns faster than 1800°/s as unknown.
+  - A trap caught by a test: the first version also "repaired" a real turn (arms cross in the
+    image and stay crossed), flipping every later frame. Requiring the swap to revert fixed it.
+  - Proof: the synthetic generator now injects the same glitches. Without the fixes, 10% of
+    trusted windows were confidently wrong; with them, 0%. The headline numbers didn't change.
+- **But that wasn't the main cause.** The fixes didn't raise the real clip's reliability. Plotting
+  four dancers' bone angles showed why: they clearly move together on the big hits, but most
+  of the time is individually styled grooving, so short windows rarely correlate strongly.
+- **Planted shifts in real motion** (`synth/real_shift.py`). Real footage has no answer key, so
+  plant one: delay one member's real track by 33 / 67 / 133 ms, re-measure, and check that their
+  offset relative to the others changes by exactly that. Medians over the clip came back at
+  about 30 / 66 / 133 ms in every setting tried; single windows were too noisy (6-13% confidently
+  wrong once thresholds were loose enough to measure anything). That's why the next step reports
+  timing per section, as a robust median with an uncertainty, instead of per window.

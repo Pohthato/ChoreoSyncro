@@ -36,6 +36,7 @@ class SmoothingConfig:
     beta: float = 1.0
     d_cutoff: float = 1.0
     max_gap_frames: int = 4
+    repair_swaps: bool = True
 
 
 @dataclass
@@ -55,6 +56,7 @@ class SyncConfig:
     lag_penalty: float = 0.1
     iterations: int = 10
     shape_threshold_deg: float = 15.0
+    max_bone_speed_deg_s: float = 1800.0
 
 
 @dataclass

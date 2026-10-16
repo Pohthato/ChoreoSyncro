@@ -45,6 +45,7 @@ flowchart LR
 | pose | Ultralytics **YOLO11-pose** (`yolo11s-pose.pt`, CPU) | one pass finds every person and their COCO-17 keypoints; ByteTrack is built in; same family as Optiqen's pose stage. RTMPose is somewhat more accurate in crowds but needs a separate detector and the MMCV stack. |
 | tracking | **ByteTrack**, then a stitching pass ([pose/tracks.py](syncscore/pose/tracks.py)) | rejoins members who come back with a new ID after an occlusion (by torso colour and position), drops non-members, flags crossings after which two tracks look like they swapped clothes. |
 | smoothing | **One Euro filter**, run forward and backward and averaged ([pose/smooth.py](syncscore/pose/smooth.py)) | removes jitter while keeping fast hits (93% of peak speed). A causal filter added 67 ms of lag in tests, as big as the offsets being measured; the two-way average cancels it (< 1 ms). |
+| pose glitches | left/right swaps that **revert within 2 frames** are undone; bone turns faster than 1800°/s are marked unknown | on the real clip, 1% of frames carried ~90% of the shoulder and hip velocity energy, all glitches. A real turn crosses the arms and stays crossed, so it is never "repaired" (tested). |
 | comparable bodies | **bone direction unit vectors** ([features/bones.py](syncscore/features/bones.py)) | a unit vector has no position, scale or length, so a tall and a short member doing the same move are identical (tested to 1e-9). Optional **mirroring** (swap left/right, reflect x) for mirrored choreography: off, per member, or auto per window. |
 | consensus | **leave-one-out median** per bone ([sync/consensus.py](syncscore/sync/consensus.py)) | a member is never part of their own timing reference, and a median ignores one other member's mistake. |
 | timing | **normalised cross-correlation of bone velocities**, 2 s windows every 0.25 s, ±400 ms, parabolic sub-frame peak, Viterbi over windows ([sync/timing.py](syncscore/sync/timing.py)) | one lag per window is exactly the question. Velocity marks when moves start and stop and is blind to a constant pose error, which keeps timing and shape apart. DTW was rejected: its free time-stretching absorbs part of a pose error into timing, and it gives no natural sub-frame estimate. |
@@ -97,6 +98,7 @@ bone on the other members at 2.5-2.9°. M6 had both errors, and their timing was
 | knees and ankles cut off by the frame | 97% | 4.6 ms | 1% |
 | fast spin, pose model swaps left/right for 2 of 5 members | 69% | 4.9 ms | 2% |
 | groove repeating every 0.36 s (shorter than the search) | 17% | 2.4 ms | 1% |
+| pose-model glitches on 2% of frames (left/right swaps, misplaced wrists), without / with glitch handling | 72% / 99% | 9.4 / 3.2 ms | 10% / 0% |
 | pose error of 5° | right bone named 100%, but 4.5° vs a 2.9° floor: barely detectable | | |
 
 ![Failure sweeps](docs/media/sweeps.png)

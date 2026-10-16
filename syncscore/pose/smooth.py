@@ -75,6 +75,66 @@ def fill_short_gaps(x: np.ndarray, max_gap: int) -> tuple[np.ndarray, np.ndarray
     return out, filled
 
 
+# Left/right keypoint pairs grouped by body chain. Pose models sometimes swap a whole chain
+# (both arms, or both legs) for a frame or two, typically when a dancer turns side-on.
+_CHAINS = {
+    "arms": ([5, 7, 9], [6, 8, 10]),
+    "legs": ([11, 13, 15], [12, 14, 16]),
+    "head": ([1, 3], [2, 4]),
+}
+
+
+def _chain_costs(xy: np.ndarray, known: np.ndarray, t: int, ref: int, left: list, right: list) -> tuple[float, float] | None:
+    """(cost as labelled, cost with left/right swapped) of frame t's chain against frame ref."""
+    both = known[t, left] & known[t, right] & known[ref, left] & known[ref, right]
+    if both.sum() < 2:
+        return None
+    l, r = np.array(left)[both], np.array(right)[both]
+    same = np.linalg.norm(xy[t, l] - xy[ref, l], axis=-1).sum() + np.linalg.norm(xy[t, r] - xy[ref, r], axis=-1).sum()
+    swapped = np.linalg.norm(xy[t, r] - xy[ref, l], axis=-1).sum() + np.linalg.norm(xy[t, l] - xy[ref, r], axis=-1).sum()
+    return same, swapped
+
+
+def repair_left_right_swaps(xy: np.ndarray, conf: np.ndarray, min_conf: float, margin: float = 0.6, max_len: int = 2) -> tuple[np.ndarray, np.ndarray, int]:
+    """Undo brief left/right label swaps by the pose model.
+
+    A chain (arms, legs, head) counts as swapped at frame t when swapping its labels fits the
+    previous frame much better (cost below `margin` times the cost as labelled). It is only
+    repaired if the labels **swap back within `max_len` frames**. That is the difference between
+    a model glitch and a dancer really turning: when a dancer turns, the left and right arms cross
+    in the image and stay crossed, so the swapped labelling never reverts and nothing is touched.
+    Returns the repaired arrays and how many chain-frames were repaired.
+    """
+    xy, conf = xy.copy(), conf.copy()
+    known = conf >= min_conf
+    frames, repairs = len(xy), 0
+    for left, right in _CHAINS.values():
+        lr = list(left) + list(right)
+        rl = list(right) + list(left)
+        t = 1
+        while t < frames:
+            costs = _chain_costs(xy, known, t, t - 1, left, right)
+            if costs is None or not costs[1] < margin * costs[0]:
+                t += 1
+                continue
+            back = None
+            for u in range(t + 1, min(frames, t + max_len + 1)):
+                later = _chain_costs(xy, known, u, t - 1, left, right)
+                if later is not None and later[0] < margin * later[1]:
+                    back = u
+                    break
+            if back is None:  # no reversion: a real crossing, or we can't tell; leave it
+                t += 1
+                continue
+            for k in range(t, back):
+                xy[k, lr] = xy[k, rl]
+                conf[k, lr] = conf[k, rl]
+                known[k, lr] = known[k, rl]
+                repairs += 1
+            t = back
+    return xy, conf, repairs
+
+
 def body_scale(xy: np.ndarray) -> float:
     """Median torso length (mid-shoulder to mid-hip) in pixels, used as the unit of speed."""
     torso = np.linalg.norm((xy[:, 5] + xy[:, 6]) / 2 - (xy[:, 11] + xy[:, 12]) / 2, axis=-1)
@@ -88,6 +148,8 @@ def smooth_keypoints(xy: np.ndarray, conf: np.ndarray, fps: float, cfg: Smoothin
     Low-confidence points become missing, short gaps are filled (they get the bare
     threshold confidence), and the forward and backward One Euro passes are averaged.
     """
+    if cfg.repair_swaps:
+        xy, conf, _ = repair_left_right_swaps(xy, conf, min_conf)
     xy = np.where((conf >= min_conf)[..., None], xy, np.nan)
     xy, filled = fill_short_gaps(xy, cfg.max_gap_frames)
     conf = conf.copy()

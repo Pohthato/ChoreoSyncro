@@ -86,6 +86,8 @@ class GroupSpec:
     limb_errors: list = field(default_factory=list)
     noise: float = 0.0               # keypoint noise std, as a fraction of body height
     dropout: float = 0.0             # chance that a keypoint comes back with low confidence
+    glitches: float = 0.0            # chance per frame of a pose-model glitch: a chain's left/right labels
+                                     # swapped for 1-2 frames, or a wrist put somewhere else, still confident
     style_deg: float = 0.0           # each member's own small, slow deviation from the choreography
     spins: list = field(default_factory=list)  # (t0, duration_s) in choreography time
     spin_label_flip: bool | list = False  # pose model swaps left/right while the back faces the camera (per member if a list)
@@ -251,6 +253,28 @@ def _style(rng: np.random.Generator, times: np.ndarray, degrees: float) -> np.nd
     return out
 
 
+_GLITCH_CHAINS = (([5, 7, 9], [6, 8, 10]), ([11, 13, 15], [12, 14, 16]))
+
+
+def _add_glitches(kp: np.ndarray, rng: np.random.Generator, rate: float, height: float) -> None:
+    """The two pose-model failures seen on real dance footage, in place.
+
+    Half the glitches swap the left and right labels of the arms or the legs for one or two
+    frames (typical when a dancer turns side-on). The other half put one wrist up to a third of
+    a body height away for one frame. Confidence stays high in both, which is what makes them
+    dangerous: nothing upstream filters them out.
+    """
+    frames = len(kp)
+    for t in np.flatnonzero(rng.random(frames) < rate):
+        if rng.random() < 0.5:
+            left, right = _GLITCH_CHAINS[rng.integers(2)]
+            span = slice(t, min(frames, t + rng.integers(1, 3)))
+            kp[span, left + right] = kp[span, right + left]
+        else:
+            wrist = 9 if rng.random() < 0.5 else 10
+            kp[t, wrist] += rng.uniform(-1, 1, size=2) * height / 3
+
+
 def _envelope(times: np.ndarray, t0: float, t1: float, ramp: float) -> np.ndarray:
     if ramp <= 0:
         return ((times >= t0) & (times < t1)).astype(float)
@@ -298,6 +322,8 @@ def make_group(spec: GroupSpec) -> SyntheticGroup:
             kp[back] = kp[back][:, FLIP]
         if spec.noise > 0:
             kp = kp + rng.normal(0.0, spec.noise * bodies[i].height, size=kp.shape)
+        if spec.glitches > 0:
+            _add_glitches(kp, rng, spec.glitches, bodies[i].height)
         if spec.dropout > 0:
             dropped = rng.random((len(times), 17)) < spec.dropout
             c[dropped] = 0.05

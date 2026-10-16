@@ -66,3 +66,11 @@ def test_loop_repeats_with_its_period():
     period = 18  # 0.36 s at 50 fps
     a, b = u[int(5 * 50):int(9 * 50)], u[int(5 * 50) + period:int(9 * 50) + period]
     assert np.allclose(a, b, atol=1e-6)
+
+
+def test_glitches_swap_labels_or_move_a_wrist_at_full_confidence():
+    clean = make_group(GroupSpec(n_members=1, duration_s=10.0, fps=30.0, seed=5))
+    glitchy = make_group(GroupSpec(n_members=1, duration_s=10.0, fps=30.0, seed=5, glitches=0.05))
+    changed = ~np.isclose(clean.keypoints[0], glitchy.keypoints[0]).all(axis=(1, 2))
+    assert 0.02 < changed.mean() < 0.15
+    assert (glitchy.conf[0] > 0.8).all()  # glitches are not marked as uncertain

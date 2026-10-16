@@ -44,14 +44,28 @@ def make_windows(n_frames: int, window: int, hop: int) -> Windows:
     return Windows(starts=np.arange(0, n_frames - window + 1, max(1, hop)), length=window)
 
 
-def velocity(u: np.ndarray, w: np.ndarray, fps: float) -> tuple[np.ndarray, np.ndarray]:
+def velocity(u: np.ndarray, w: np.ndarray, fps: float, max_speed_deg_s: float = 0.0) -> tuple[np.ndarray, np.ndarray]:
     """Central-difference velocity of unit vectors: (T, B, 2) per second. Its size is the angular
-    speed of the bone in radians per second."""
+    speed of the bone in radians per second.
+
+    `max_speed_deg_s` is a physical limit. A bone that turns faster than that between two frames
+    is a pose glitch (labels swapped, a wrist briefly put somewhere else), not a movement, and the
+    velocity there is marked unknown. Without this, a cross-correlation squares the glitch and
+    a handful of glitch frames outweigh all the real motion.
+    """
     v = np.full_like(u, np.nan)
     v[1:-1] = (u[2:] - u[:-2]) * fps / 2
     vw = np.zeros_like(w)
     vw[1:-1] = np.minimum(w[2:], w[:-2])
     known = np.isfinite(v[..., 0]) & (vw > 0)
+    if max_speed_deg_s > 0:
+        step = np.full(u.shape[:-1], np.nan)  # degrees turned from frame t-1 to t
+        dot = np.clip(np.sum(u[1:] * u[:-1], axis=-1), -1.0, 1.0)
+        step[1:] = np.degrees(np.arccos(dot))
+        limit = max_speed_deg_s / fps
+        too_fast = np.zeros(u.shape[:-1], dtype=bool)
+        too_fast[1:-1] = (np.nan_to_num(step[1:-1]) > limit) | (np.nan_to_num(step[2:]) > limit)
+        known &= ~too_fast
     return np.where(known[..., None], v, np.nan), np.where(known, vw, 0.0)
 
 

@@ -17,6 +17,7 @@ smoothing:
   beta: 1.0                   # One Euro: higher = less smoothing during fast motion (per torso length/s)
   d_cutoff: 1.0
   max_gap_frames: 4           # interpolate holes up to this long, leave longer ones missing
+  repair_swaps: true          # undo sudden left/right label swaps by continuity with the last frame
 
 features:
   mirror: "off"               # "off" | "auto" | a list of member ids to mirror, e.g. [2, 4]
@@ -31,7 +32,8 @@ sync:
   min_margin: 0.15            # best peak must beat any separate peak by this much, else ambiguous
   lag_penalty: 0.1            # Viterbi cost per 100 ms of jump between neighbouring windows
   iterations: 10              # max align -> consensus -> re-estimate passes (stops early once stable)
-  shape_threshold_deg: 15.0   # a body part counts as "off" above this mean angle
+  shape_threshold_deg: 15.0   # a body part counts as "off" above this angle (worst bone of the part)
+  max_bone_speed_deg_s: 1800  # faster bone rotation is a pose glitch: that velocity is unknown (0 = off)
 
 sections:
   # Either list explicit [start_s, end_s, name] sections, or leave empty for fixed chunks.

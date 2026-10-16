@@ -140,6 +140,10 @@ def sweep_cases(seeds: int) -> list[Case]:
             label = f"repeated groove, jump penalty {penalty:g}"
             spec = GroupSpec(**base, **REALISTIC, loops=[(12.0, 30.0, 0.18, 2)], seed=s)
             cases.append(Case("repeated_groove", label, penalty, spec, affected=[(None, 12.0, 30.0)], config_overrides={"sync.lag_penalty": penalty}))
+        for repair in (False, True):
+            label = "pose glitches 2%/frame, " + ("swap repair + speed limit" if repair else "no glitch handling")
+            overrides = {} if repair else {"smoothing.repair_swaps": False, "sync.max_bone_speed_deg_s": 0.0}
+            cases.append(Case("glitches", label, float(repair), GroupSpec(**base, **REALISTIC, glitches=0.02, seed=s), config_overrides=overrides))
         for degrees in (5.0, 10.0, 15.0, 20.0, 30.0):
             spec = GroupSpec(**base, **REALISTIC, limb_errors=[LimbError(1, "l_elbow", degrees, 10.0, 30.0)], seed=s)
             cases.append(Case("limb_error", f"{degrees:g} deg", degrees, spec))
