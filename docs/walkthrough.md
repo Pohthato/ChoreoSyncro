@@ -418,21 +418,38 @@ partly the front dancer's. Now any joint lying on another present member's joint
 and a candidate left with fewer than 6 joints of its own is rejected. In a fresh sample after
 the fix, every recovered box checked was the hidden dancer, with joints on their own body.
 
-**Result on the BTS clip:** all 7 tracked in **57.2%** of frames (was 46.5%); each member seen
-76-96% of the time (was 72-93%). 517 member-frames came from unused detections and 951 from the
-second look. Gaps of 0.5-2 s went from 47 to 12. The 26 gaps of 2 s or more are untouched by
+**Result on the BTS clip:** all 7 tracked in **57.1%** of frames (was 46.5%); each member seen
+76-96% of the time (was 72-93%). 517 member-frames came from unused detections and 936 from the
+second look. Gaps of 0.5-2 s went from 47 to 13. The 26 gaps of 2 s or more are untouched by
 design.
 
-**What it did to timing** (planted shifts, same 3 members × 3 shifts): sections measured stayed
-at 22%, with the error at 11.5 ms (was 11.7) and still none more than 30 ms wrong, but the truth
-now lands inside the claimed 90% interval in **100%** of cases (was 83%). Single strict windows
-got more precise (5.7 ms, was 7.0). So more complete tracks didn't add section readings on this
-clip; they made the existing ones more trustworthy.
+**Caught by the final review: the same dancer given to two members.** The second look's low
+threshold finds near-copies of one person (boxes overlapping 0.4-0.7). Every pair in a frame was
+scored once, before any fill, so two missing members could each take a copy of the same dancer
+(about 1-2% of fills). Now each fill counts as present before the next member is scored. Two
+more fixes from the same review: the "after" cause split is counted on the original detections
+(re-detection finds everyone again, which made detector misses look like assignment losses), and
+re-detection reads frames in decode order instead of seeking, which can land on the wrong frame
+in variable-frame-rate phone video.
 
-**Suspected ID swaps went from 19 to 41, and that is mostly a measurement change.** The swap
+**What it did to timing** (planted shifts, same 3 members × 3 shifts):
+
+| | before Stage D | after |
+|---|---|---|
+| sections measured | 22% | **33%** |
+| error | 11.7 ms | 9.7 ms |
+| > 30 ms wrong | 0% | 0% |
+| truth inside the 90% interval | 83% | **100%** |
+
+The gain is spread over all three planted members, and **M2, who never got a section reading
+before, now gets one in 14-29% of sections** (errors 3.6-10.5 ms). Before the duplicate fix the
+same test read 22%: two members carrying one dancer's pose blurred the group reference. Nine
+plants is a small sample, so read 33% as "about a third", not a precise figure.
+
+**Suspected ID swaps went from 19 to 39, and that is mostly a measurement change.** The swap
 check compares clothing colour before and after each crossing. Filled boxes now sit exactly in
 the overlaps that used to be gaps, so the check sees crossings it couldn't see before: leaving
-the filled boxes out of the crossing check gives exactly the original 19, so all 22 new ones are
+the filled boxes out of the crossing check gives exactly the original 19, so all 20 new ones are
 at those crossings. A filled frame's colour is set to unknown, since in a half-hidden box the
 torso is mostly the front dancer's clothes. Filling can't
 create a lasting swap (a gap is only filled between the member's own sightings, at most 2 s

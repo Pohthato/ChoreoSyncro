@@ -111,16 +111,16 @@ planted: a real member's track is delayed by 33 / 67 / 133 ms and the measuremen
 
 | | measured | error | > 30 ms wrong | truth inside the 90% interval |
 |---|---|---|---|---|
-| single windows, strict gates | 3% of windows | 7.0 ms | 4% | |
+| single windows, strict gates | 3% of windows | 6.3 ms | 3% | |
 | single windows, 4 s long, gates loosened to 0.2 (before the tracking fix) | 23% | 14 ms | 13% | |
-| **32 s sections** (pooled, with intervals) | 22% of the planted members' sections | 11.7 ms | 0% | 83% (claimed 90%: slightly overconfident) |
-| single hits (tried, not in the report) | 19% of hits | about 3 ms typical, 22 ms mean | 3% | |
+| **32 s sections** (pooled, with intervals) | 33% of the planted members' sections | 9.7 ms | 0% | 100% |
+| single hits (tried, not in the report) | 23% of hits | about 4 ms typical, 18 ms mean | 3% | |
 | 32 s sections from hits | 0% | | | |
-| 32 s sections, windows or hits | 24% | 12.8 ms | 0% | 83% |
+| 32 s sections, windows or hits | 33% | 9.7 ms | 0% | 100% |
 
-(3 members × 3 shifts; after the tracking fix below. One member, M2, never gets a section reading,
-even with a planted shift: their timing varies too much from section to section to state a
-number, and the tool says so instead.)
+(3 members × 3 shifts, after the tracking fixes below. Filling occlusion gaps took sections from
+22% to 33% and the interval coverage from 83% to 100%; M2, who never got a section reading
+before, now gets one in 14-29% of sections.)
 
 Per window the measurement noise is about ±12-15 ms, but window offsets spread about ±60 ms,
 and that spread comes from the dancing (real timing variation, or styling read as timing). That's
@@ -132,8 +132,8 @@ member's speed peak within ±400 ms of the hit, to a fraction of a frame
 ([sync/hits.py](syncscore/sync/hits.py)). The matching works (each member's own peak follows a
 planted shift 99% of the time), but the dancing doesn't cooperate: at the same hit, members'
 peaks spread with an IQR of 45-100 ms, and a 32 s section holds only 0-8 matched hits per member.
-No section from hits got an interval under 50 ms, and adding them to windows read 24% of
-sections instead of 22%. So the report stays on window sections; `syncscore shift-test` still
+No section from hits got an interval under 50 ms, and adding them to window sections added at
+most one member-section. So the report stays on window sections; `syncscore shift-test` still
 scores the hits, so the result is reproducible. The full story is in
 [docs/walkthrough.md](docs/walkthrough.md), Stage B.
 
@@ -171,11 +171,12 @@ Real accuracy is bounded by the pose model.
 - **Tracking on the test clip:** ByteTrack gave 159 IDs for 7 people. The stitching first threw
   away 15% of the member detections (it treated long, badly colour-matched pieces as passers-by);
   after the fix 96% are kept, from 99 rejoined pieces. Filling occlusion gaps with real
-  detections raised the frames with all 7 members tracked from 46.5% to 57.2%, and every member
+  detections raised the frames with all 7 members tracked from 46.5% to 57.1%, and every member
   is visible 76-96% of the time. Gaps over 2 s are left empty. Identity errors at crossings are
-  still possible: 41 suspected swaps (19 before gap filling; all 22 new ones are at crossings the
+  still possible: 39 suspected swaps (19 before gap filling; all 20 new ones are at crossings the
   check couldn't see while those frames were gaps), and the true rate needs the hand audit.
-- **Section intervals are slightly overconfident on real footage** (83% coverage for a claimed 90%).
+- **Section intervals were slightly overconfident on real footage** before the occlusion fix (83%
+  coverage for a claimed 90%); after it, 100% in the planted test, from only 9 plants.
 - Thresholds (35 ms "in sync", 135 ms "off", 15° "pose off") are choices, not standards.
 
 ## Built on Optiqen
