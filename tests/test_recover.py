@@ -5,7 +5,7 @@ import numpy as np
 
 from syncscore.config import load_config
 from syncscore.pose.recover import _cache_matches, _save_cache, frames_to_recover, merge
-from syncscore.pose.tracks import MemberTracks
+from syncscore.pose.tracks import Detections, MemberTracks
 from test_tracks import _detections
 
 
@@ -44,3 +44,28 @@ def test_recover_cache_is_rebuilt_when_settings_change(tmp_path):
     assert not _cache_matches(cache, frames, other_model)
     assert not _cache_matches(cache, np.array([4, 8]), config)
     assert not _cache_matches(tmp_path / "missing.npz", frames, config)
+
+
+def test_redetected_duplicates_do_not_change_the_cause_split():
+    # Re-detection finds everyone in the frame again. Counting those duplicates as "detected"
+    # would make missing frames look like assignment losses instead of detector misses.
+    from syncscore.pose.coverage import coverage
+    from syncscore.pose.recover import fill_occlusions
+    from syncscore.pose.tracks import assemble, assign_members, build_tracklets
+
+    det = _detections([
+        (1, range(100), lambda f: 300, 0),
+        (2, [f for f in range(100) if not 40 <= f < 50], lambda f: 900, 1),
+        (3, range(100), lambda f: 1500, 2),
+    ])
+    tracks = assemble(det, assign_members(det, build_tracklets(det, min_frames=9), members=3, max_gap_s=2.0))
+
+    def redetect(frames):
+        rows = np.flatnonzero(np.isin(det.frame, frames))
+        return Detections(det.frame[rows], np.full(len(rows), -1), det.box[rows], det.box_conf[rows], det.xy[rows],
+                          det.kconf[rows], det.hist[rows], det.fps, det.n_frames, det.image_size)
+
+    filled, report = fill_occlusions(det, tracks, max_gap_s=2.0, min_keypoint_conf=0.3, redetect=redetect)
+    assert report["filled_from_redetection"] == 0  # the duplicates are the present members
+    assert report["after"]["missing_detector_share"] == 1.0
+    assert report["after"] == coverage(det, filled, 0.3)

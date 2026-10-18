@@ -16,9 +16,7 @@ def _analyze(args: argparse.Namespace) -> int:
     from .outputs import write_outputs
     from .pipeline import analyze_keypoints
     from .pose.extract import extract
-    from .pose.coverage import coverage
-    from .pose.fill import fill_gaps
-    from .pose.recover import frames_to_recover, merge, redetect
+    from .pose.recover import fill_occlusions, redetect
     from .pose.tracks import Detections, assemble, assign_members, build_tracklets, count_members, suspected_swaps
     from .pose.video import probe, resample_uniform
     from .viz.smoothing_plot import render_smoothing_plot
@@ -48,18 +46,13 @@ def _analyze(args: argparse.Namespace) -> int:
     tracks = assemble(det, assign_members(det, tracklets, members, config.tracking.stitch_max_gap_s))
     # Occlusion: fill members' short gaps with real detections, first ones the assignment left
     # unused, then from a more sensitive second look at just the frames still missing someone.
-    before = coverage(det, tracks, min_conf)
-    tracks, from_leftovers = fill_gaps(det, tracks, config.tracking.fill_max_gap_s, min_conf)
-    from_redetection = 0
-    if config.tracking.recover:
-        frames = frames_to_recover(tracks, info.fps, config.tracking.fill_max_gap_s)
-        cache = out / "recovered.npz"
-        if args.redo_pose:
-            cache.unlink(missing_ok=True)
-        if len(frames):
-            det = merge(det, redetect(video, frames, config, cache, info.size, info.fps, det.n_frames))
-            tracks, from_redetection = fill_gaps(det, tracks, config.tracking.fill_max_gap_s, min_conf)
-    after = coverage(det, tracks, min_conf)
+    cache = out / "recovered.npz"
+    if args.redo_pose:
+        cache.unlink(missing_ok=True)
+    second_look = (lambda frames: redetect(video, frames, config, cache, info.size, info.fps, det.n_frames)) if config.tracking.recover else None
+    tracks, filling = fill_occlusions(det, tracks, config.tracking.fill_max_gap_s, min_conf, second_look)
+    before, after = filling["before"], filling["after"]
+    from_leftovers, from_redetection = filling["filled_from_leftovers"], filling["filled_from_redetection"]
     swaps = suspected_swaps(tracks.hist, tracks.box, info.fps, config.tracking.crossing_iou)
     names = [f"M{i + 1}" for i in range(len(tracks.xy))]
     np.savez_compressed(out / "keypoints_raw.npz", xy=tracks.xy.astype(np.float32), conf=tracks.conf.astype(np.float32),

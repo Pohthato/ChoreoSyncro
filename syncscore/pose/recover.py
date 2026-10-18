@@ -110,3 +110,26 @@ def redetect(video: str | Path, frames: np.ndarray, config: Config, cache: Path,
     )
     _save_cache(cache, det, frames, config)
     return det
+
+
+def fill_occlusions(det: Detections, tracks: MemberTracks, max_gap_s: float, min_keypoint_conf: float,
+                    redetect=None) -> tuple[MemberTracks, dict]:
+    """Both gap-filling passes, with coverage before and after.
+
+    `redetect(frames) -> Detections` is the second look (None = off). Coverage "after" is
+    measured on the *original* detections: re-detection runs on the whole frame and finds every
+    visible person again, and counting those copies would make a detector miss look like an
+    assignment loss."""
+    from .coverage import coverage
+    from .fill import fill_gaps
+
+    before = coverage(det, tracks, min_keypoint_conf)
+    tracks, from_leftovers = fill_gaps(det, tracks, max_gap_s, min_keypoint_conf)
+    from_redetection = 0
+    if redetect is not None:
+        frames = frames_to_recover(tracks, det.fps, max_gap_s)
+        if len(frames):
+            tracks, from_redetection = fill_gaps(merge(det, redetect(frames)), tracks, max_gap_s, min_keypoint_conf)
+    report = {"before": before, "after": coverage(det, tracks, min_keypoint_conf),
+              "filled_from_leftovers": from_leftovers, "filled_from_redetection": from_redetection}
+    return tracks, report
