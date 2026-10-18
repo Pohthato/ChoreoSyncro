@@ -69,3 +69,32 @@ def test_redetected_duplicates_do_not_change_the_cause_split():
     assert report["filled_from_redetection"] == 0  # the duplicates are the present members
     assert report["after"]["missing_detector_share"] == 1.0
     assert report["after"] == coverage(det, filled, 0.3)
+
+
+class _VariableRateVideo:
+    """Stands in for cv2.VideoCapture on a variable-frame-rate file: frames decode in order, but
+    seeking by index converts it to a time with the average frame rate and lands one frame late."""
+
+    def __init__(self, n_frames):
+        self.n, self.pos = n_frames, 0
+
+    def set(self, prop, value):
+        self.pos = int(value) + 1
+
+    def grab(self):
+        self.pos += 1
+        return self.pos <= self.n
+
+    def retrieve(self):
+        return True, np.full((4, 4, 3), self.pos - 1, dtype=np.uint8)  # pixel value = frame index
+
+    def read(self):
+        ok = self.grab()
+        return self.retrieve() if ok else (False, None)
+
+
+def test_frames_are_read_in_decode_order_not_by_seeking():
+    from syncscore.pose.recover import _read_frames
+
+    got = {f: int(image[0, 0, 0]) for f, image in _read_frames(_VariableRateVideo(20), np.array([3, 4, 11]))}
+    assert got == {3: 3, 4: 4, 11: 11}
