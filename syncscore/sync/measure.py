@@ -33,6 +33,8 @@ from .consensus import group_median, leave_one_out_median, warp
 from .shape import shape_errors
 from .timing import Windows, estimate_lags, make_windows, velocity
 
+FACING_DEG = 120.0   # shoulder and hip lines both reversed this much = facing a different way
+_SHOULDERS, _HIPS = BONE_NAMES.index("shoulders"), BONE_NAMES.index("hips")
 DAMPING = 0.5        # share of the way to move toward each new estimate
 CONVERGED_MS = 0.1   # stop iterating once no reliable window moves more than this
 
@@ -48,12 +50,15 @@ class SyncResult:
     peak: np.ndarray               # (M, K) correlation at the chosen lag
     motion: np.ndarray             # (M, K) how much the group was moving, rad/s
     reliable: np.ndarray           # (M, K) bool
+    coverage: np.ndarray           # (M, K) share of the window the member was seen in
+    margin: np.ndarray             # (M, K) chosen correlation peak minus the best separate one
     part_offset_ms: np.ndarray     # (M, P, K)
     part_reliable: np.ndarray      # (M, P, K)
     mirrored: np.ndarray           # (M, K) bool, member compared as mirrored in that window
     offset_curve_ms: np.ndarray    # (M, T) per-frame offset, interpolated between reliable windows
     bone_shape_deg: np.ndarray     # (M, T, B) on the member's own (video) clock
     part_shape_deg: np.ndarray     # (M, T, P)
+    facing_differently: np.ndarray # (M, T) shoulders and hips reversed vs the group: pose not comparable
     bone_names: tuple = BONE_NAMES
     part_names: tuple = PARTS
     notes: list = field(default_factory=list)
@@ -120,6 +125,8 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
     reliable = np.zeros((members, n_windows), dtype=bool)
     peak = np.full((members, n_windows), np.nan)
     motion = np.zeros((members, n_windows))
+    coverage = np.zeros((members, n_windows))
+    margin = np.full((members, n_windows), np.nan)
 
     def chosen(i):
         """Member i's directions and velocities in the orientation chosen for each frame."""
@@ -147,6 +154,7 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
             cv, cvw = velocity(cons[i], cons_w[i], fps, sc.max_bone_speed_deg_s)
             result = estimate_lags(v, vw, cv, cvw, windows, **search)
             new[i], reliable[i], peak[i], motion[i] = result.lag, result.reliable, result.peak, result.motion
+            coverage[i], margin[i] = result.coverage, result.margin
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)  # windows where nobody is reliable
             center = np.nanmedian(np.where(reliable, new, np.nan), axis=0)
@@ -176,6 +184,7 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
     part_lag = np.full((members, len(PARTS), n_windows), np.nan)
     part_ok = np.zeros((members, len(PARTS), n_windows), dtype=bool)
     bone_deg = np.full((members, n_frames, len(BONE_NAMES)), np.nan)
+    facing = np.zeros((members, n_frames), dtype=bool)
     part_deg = np.full((members, n_frames, len(PARTS)), np.nan)
     for i in range(members):
         u, w, v, vw = chosen(i)
@@ -187,11 +196,19 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
             part_ok[i, p] = result.reliable
         own_u, own_w = warp(shape_ref, shape_ref_w, -curves[i])  # the group's pose on the member's clock
         bone_deg[i], part_deg[i] = shape_errors(u, w, own_u, own_w)
+        # If both the shoulder line and the hip line point the opposite way to the group's, the
+        # member faces a different way (or the pose model swapped left and right). In 2D that
+        # pose can't be compared with the group's: it would read as 180-degree "errors".
+        facing[i] = (np.nan_to_num(bone_deg[i, :, _SHOULDERS]) > FACING_DEG) & (np.nan_to_num(bone_deg[i, :, _HIPS]) > FACING_DEG)
+        bone_deg[i, facing[i]] = np.nan
+        part_deg[i, facing[i]] = np.nan
 
     return SyncResult(
         fps=fps, names=list(names), n_frames=n_frames, window_centers_s=centers / fps, window_s=sc.window_s,
         offset_ms=np.where(np.isfinite(lag), lag * frame_ms, np.nan), peak=peak, motion=motion, reliable=reliable,
+        coverage=coverage, margin=margin,
         part_offset_ms=part_lag * frame_ms, part_reliable=part_ok, mirrored=mirrored,
         offset_curve_ms=curves * frame_ms, bone_shape_deg=bone_deg, part_shape_deg=part_deg,
+        facing_differently=facing,
     )
 

@@ -126,6 +126,35 @@ def _audit_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _shift_test(args: argparse.Namespace) -> int:
+    """Plant known delays in real members' tracks and check they come back (no labels needed)."""
+    import json
+
+    import numpy as np
+
+    from .synth.real_shift import real_shift_test
+
+    config = load_config(args.config)
+    data = np.load(Path(args.results) / "keypoints_raw.npz")
+    xy, conf, fps = data["xy"].astype(float), data["conf"].astype(float), float(data["fps"])
+    members = [m - 1 for m in args.members]
+    print(f"planting {args.shifts} ms on members {args.members}: {len(members) * (len(args.shifts) + 1)} full analyses ...")
+    result = real_shift_test(xy, conf, fps, config, members=members, shifts=args.shifts, jobs=args.jobs)
+    (Path(args.results) / "shift_test.json").write_text(json.dumps(result, indent=1), encoding="utf-8")
+
+    def pct(v):
+        return "-" if v is None else f"{v * 100:.0f}%"
+
+    def ms(v):
+        return "-" if v is None else f"{v:.1f} ms"
+
+    print(f"sections: measured {pct(result['section_coverage'])}, error {ms(result['section_mae_ms'])}, "
+          f"more than 30 ms wrong {pct(result['section_wrong'])}, truth inside the 90% interval {pct(result['section_within_interval'])}")
+    print(f"single windows (strict gates): measured {pct(result['window_coverage'])}, error {ms(result['window_mae_ms'])}, "
+          f"more than 30 ms wrong {pct(result['window_wrong'])}")
+    return 0
+
+
 def _validate(args: argparse.Namespace) -> int:
     from .synth.benchmark import run_benchmark
 
@@ -138,6 +167,8 @@ def _validate(args: argparse.Namespace) -> int:
 
 def _demo(args: argparse.Namespace) -> int:
     """A synthetic 5-member group with known errors, through every output."""
+    import dataclasses
+
     import numpy as np
 
     from .outputs import write_outputs
@@ -145,6 +176,9 @@ def _demo(args: argparse.Namespace) -> int:
     from .synth.generate import GroupSpec, LimbError, make_group
 
     config = load_config(args.config)
+    # Synthetic timing spreads far less than real dance, so short sections are measurable here
+    # (5 independent blocks each). Real footage needs about 30 s (docs/walkthrough.md, Stage A).
+    config = dataclasses.replace(config, sections=dataclasses.replace(config.sections, chunk_s=10.0))
     spec = GroupSpec(
         n_members=5, duration_s=32, fps=30, seed=args.seed, noise=0.01, dropout=0.03, style_deg=3.0,
         offsets_ms=[0, [(0, 0), (16, 0), (32, 120)], -33, 67, 0],  # M2 drifts late in the second half
@@ -200,6 +234,13 @@ def main(argv: list[str] | None = None) -> int:
     audit_score = commands.add_parser("audit-score", help="Score a filled-in audit CSV")
     audit_score.add_argument("csv")
     audit_score.set_defaults(run=_audit_score)
+
+    shift = commands.add_parser("shift-test", help="Plant known delays in real tracks from `analyze` and check they are recovered")
+    shift.add_argument("--results", default="results")
+    shift.add_argument("--members", type=int, nargs="+", default=[2, 3, 4], help="member numbers (1-based)")
+    shift.add_argument("--shifts", type=float, nargs="+", default=[33.0, 67.0, 133.0])
+    shift.add_argument("--jobs", type=int, default=8)
+    shift.set_defaults(run=_shift_test)
 
     demo = commands.add_parser("demo", help="Run a synthetic group with known errors through every output")
     demo.add_argument("--out", default="results/demo")

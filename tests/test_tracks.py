@@ -97,3 +97,16 @@ def test_audit_scoring(tmp_path):
     assert result["switches"] == 2
     # M1 is Ann twice and Bo twice (2 match its majority name), M2 is Bo twice and Ann once (2 match).
     assert result["accuracy"] == pytest.approx(4 / 7)
+
+
+def test_a_long_track_with_changed_colour_is_kept_when_a_slot_is_free():
+    # Member A walks into different light: same position, very different torso colour, for 2 s.
+    # In a dance practice nobody is a passer-by, so it must not be thrown away.
+    det = _detections([
+        (1, range(0, 40), lambda f: 300, 0),
+        (5, range(45, 105), lambda f: 300, 7),    # 60 frames = 2 s, colour 7 matches no one
+        (2, range(0, 105), lambda f: 900, 1),
+    ], n_frames=105)
+    tracks = assemble(det, assign_members(det, build_tracklets(det, min_frames=5), members=2, max_gap_s=2.0))
+    assert tracks.fragments == [[1, 5], [2]]
+

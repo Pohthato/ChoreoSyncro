@@ -51,12 +51,28 @@ def _relative(result, member: int) -> tuple[np.ndarray, np.ndarray]:
     return rel, np.isfinite(rel)
 
 
+def _section_relative(timing, member: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Member's section offset minus the median of the others' reliable ones, its half-interval, and where known."""
+    others = [j for j in range(timing.offset_ms.shape[0]) if j != member]
+    off = np.where(timing.reliable, timing.offset_ms, np.nan)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        rest = np.nanmedian(off[others], axis=0)
+    rel = off[member] - rest
+    half = (timing.high_ms[member] - timing.low_ms[member]) / 2
+    return rel, half, np.isfinite(rel)
+
+
 def _run(args):
+    from ..sync.sections import section_timing
+    from ..sync.summary import make_sections
+
     xy, conf, fps, config, member, shift = args
     if shift:
         xy, conf = delay_member(xy, conf, member, shift, fps)
     result, _, _ = analyze_keypoints(xy, conf, fps, config)
-    return member, shift, _relative(result, member)
+    timing = section_timing(result, make_sections(config, result.n_frames / fps), config)
+    return member, shift, _relative(result, member), _section_relative(timing, member)
 
 
 def real_shift_test(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, members: list[int], shifts: list[float], jobs: int = 8) -> dict:
@@ -64,23 +80,38 @@ def real_shift_test(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config
     tasks = [(xy, conf, fps, config, m, 0.0) for m in members] + [(xy, conf, fps, config, m, s) for m in members for s in shifts]
     with ProcessPoolExecutor(max_workers=jobs) as pool:
         out = list(pool.map(_run, tasks))
-    base = {m: rel for m, s, rel in out if s == 0.0}
+    base = {m: (rel, sec) for m, s, rel, sec in out if s == 0.0}
     rows = []
-    for m, s, (rel, ok) in out:
+    for m, s, (rel, ok), (srel, shalf, sok) in out:
         if s == 0.0:
             continue
-        rel0, ok0 = base[m]
+        (rel0, ok0), (srel0, shalf0, sok0) = base[m]
         both = ok & ok0
-        change = rel[both] - rel0[both]
-        err = change - s
-        rows.append({"member": m, "shift_ms": s, "coverage": float(both.mean()),
-                     "median_recovered_ms": float(np.median(change)) if change.size else None,
-                     "mae_ms": float(np.abs(err).mean()) if err.size else None,
-                     "confidently_wrong": float((np.abs(err) > WRONG_MS).mean()) if err.size else None})
-    def avg(key):
+        err = rel[both] - rel0[both] - s
+        sboth = sok & sok0
+        serr = srel[sboth] - srel0[sboth] - s
+        sbound = np.sqrt(shalf[sboth] ** 2 + shalf0[sboth] ** 2)  # the difference of two estimates
+        rows.append({
+            "member": m, "shift_ms": s,
+            "window_coverage": float(both.mean()), "window_mae_ms": _mean_abs(err), "window_wrong": _share(np.abs(err) > WRONG_MS, err),
+            "section_coverage": float(sboth.mean()), "section_mae_ms": _mean_abs(serr), "section_wrong": _share(np.abs(serr) > WRONG_MS, serr),
+            "section_within_interval": _share(np.abs(serr) <= sbound, serr),
+            "section_median_recovered_ms": float(np.median(srel[sboth] - srel0[sboth])) if sboth.any() else None,
+        })
+    keys = [k for k in rows[0] if k not in ("member", "shift_ms")] if rows else []
+    summary = {}
+    for key in keys:
         vals = [r[key] for r in rows if r[key] is not None]
-        return float(np.mean(vals)) if vals else None
-    return {"rows": rows, "coverage": avg("coverage"), "mae_ms": avg("mae_ms"), "confidently_wrong": avg("confidently_wrong")}
+        summary[key] = float(np.mean(vals)) if vals else None
+    return {"rows": rows, **summary}
+
+
+def _mean_abs(err: np.ndarray) -> float | None:
+    return float(np.abs(err).mean()) if err.size else None
+
+
+def _share(mask: np.ndarray, err: np.ndarray) -> float | None:
+    return float(mask.mean()) if err.size else None
 
 
 def with_sync(config: Config, **changes) -> Config:

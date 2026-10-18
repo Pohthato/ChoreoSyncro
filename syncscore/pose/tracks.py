@@ -13,7 +13,14 @@ The post-pass:
 3. Seed N member slots with the N tracklets that are visible together for the longest, then
    attach the remaining tracklets, longest first, to the slot they fit best. Fit means no time
    overlap, similar clothing colour (hue/saturation histogram of the torso), and if the gap is
-   short, a nearby position. Tracklets that fit no slot (backup dancers, crew) are dropped.
+   short, a nearby position.
+   - A long tracklet (1 s or more) is always attached if any slot is free for its whole span,
+     however poor the colour match: lighting changes as dancers move around the room, and the
+     first version threw away 15% of a real clip's member detections (stretches up to 25 s)
+     this way. Only short tracklets can be rejected for a poor fit (reflections, false
+     detections, crew walking through).
+   - A tracklet that overlaps every slot is dropped. (Moving shorter tracklets out of the way
+     was tried: on the real clip it was attempted 14 times and never possible, so it was removed.)
 4. Look for suspected swaps at every crossing (boxes overlapping): if after the crossing each
    track looks more like the *other* member's clothes than its own, flag it.
 
@@ -160,19 +167,21 @@ def assign_members(det: Detections, tracklets: list[Tracklet], members: int, max
         slots.append(slot)
     used = set(seeds)
     max_gap = int(round(max_gap_s * det.fps))
+    long_frames = int(round(det.fps))
     for k in np.argsort(-lengths):
         if k in used:
             continue
         t = tracklets[k]
         costs = [_fit_cost(det, slot, t, max_gap, overlap_ok=2) for slot in slots]
-        best = int(np.argmin(costs))
-        if len(slots) < members and (not np.isfinite(costs[best]) or costs[best] > max_cost):
+        best = int(np.argmin(costs)) if costs else -1
+        fits = best >= 0 and np.isfinite(costs[best])
+        if len(slots) < members and (not fits or costs[best] > max_cost):
             slot = Slot(occupied=np.zeros(n, dtype=bool), hist_sum=np.zeros_like(t.hist))
             _attach(slot, t)
             slots.append(slot)
-        elif np.isfinite(costs[best]) and costs[best] <= max_cost:
+        elif fits and (costs[best] <= max_cost or len(t.frames) >= long_frames):
             _attach(slots[best], t)
-        # else: nobody it fits, so it is not a member (dropped)
+        # else: busy everywhere, or short and a poor fit: not attached (dropped)
     return slots
 
 

@@ -62,7 +62,11 @@ class SyncConfig:
 @dataclass
 class SectionsConfig:
     explicit: list = field(default_factory=list)
-    chunk_s: float = 8.0
+    chunk_s: float = 32.0
+    min_peak: float = 0.2      # looser than sync.min_peak: windows are pooled, not trusted alone
+    min_windows: int = 8
+    min_blocks: int = 5        # independent stretches; fewer makes the bootstrap interval meaningless
+    max_ci_ms: float = 50.0
 
 
 @dataclass

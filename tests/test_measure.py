@@ -85,3 +85,14 @@ def test_mirrored_member(config, mirror):
     assert result.mirrored[2].mean() > 0.9 and result.mirrored[[0, 1, 3, 4]].mean() < 0.05
     assert _member_offsets(result)[2] == pytest.approx(100.0, abs=4.0)
     assert np.nanmean(result.part_shape_deg[2]) < 2.0
+
+
+def test_a_member_facing_the_other_way_is_not_scored_as_180_degree_pose_errors(config):
+    # Everyone spins; the pose model swaps left and right for member 3 while their back faces the
+    # camera, so their shoulder and hip lines point the opposite way to the group's.
+    spins = [(5.0, 1.2), (15.0, 1.2)]
+    group = make_group(GroupSpec(n_members=5, duration_s=20, fps=30, spins=spins, spin_label_flip=[False, False, True, False, False], seed=17))
+    result = measure_sync(group.keypoints, group.conf, group.fps, config)
+    assert result.facing_differently[2].any()
+    assert not result.facing_differently[[0, 1, 3, 4]].any()
+    assert np.nanmax(result.bone_shape_deg[2]) < 120.0

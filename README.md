@@ -49,8 +49,9 @@ flowchart LR
 | comparable bodies | **bone direction unit vectors** ([features/bones.py](syncscore/features/bones.py)) | a unit vector has no position, scale or length, so a tall and a short member doing the same move are identical (tested to 1e-9). Optional **mirroring** (swap left/right, reflect x) for mirrored choreography: off, per member, or auto per window. |
 | consensus | **leave-one-out median** per bone ([sync/consensus.py](syncscore/sync/consensus.py)) | a member is never part of their own timing reference, and a median ignores one other member's mistake. |
 | timing | **normalised cross-correlation of bone velocities**, 2 s windows every 0.25 s, ±400 ms, parabolic sub-frame peak, Viterbi over windows ([sync/timing.py](syncscore/sync/timing.py)) | one lag per window is exactly the question. Velocity marks when moves start and stop and is blind to a constant pose error, which keeps timing and shape apart. DTW was rejected: its free time-stretching absorbs part of a pose error into timing, and it gives no natural sub-frame estimate. |
+| section timing | median of many looser windows per section (default 32 s), with a 90% interval from a joint block bootstrap ([sync/sections.py](syncscore/sync/sections.py)) | on real dance single windows are weak witnesses, and pooling is what holds up when shifts are planted into real footage. "0 ms" stays the clip's median member even when someone is hidden. |
 | group clock | iterate: align members, rebuild consensus, re-measure, damped, until < 0.1 ms change ([sync/measure.py](syncscore/sync/measure.py)) | offsets are relative to the **median member**. Without damping the estimates overshoot each other (with 2 members, forever). |
-| shape | angle between each bone and the **whole-group median** after removing timing ([sync/shape.py](syncscore/sync/shape.py)) | including the member makes the median a vote, which stays robust in a trio. |
+| shape | angle between each bone and the **whole-group median** after removing timing ([sync/shape.py](syncscore/sync/shape.py)); a part is "off" when it is more than 15° beyond the **group's own typical error** at that moment | including the member makes the median a vote, which stays robust in a trio. On real 2D footage perspective and styling put everyone's arms tens of degrees from the consensus, so only standing out from the group counts. |
 | honesty gates | a window is "no reading" when the group barely moves, the match is poor, the member is mostly unseen, or **a second correlation peak is nearly as high** (repeated grooves) | not knowing is reported as not knowing. |
 
 The full reasoning, stage by stage, is in [docs/walkthrough.md](docs/walkthrough.md).
@@ -70,16 +71,16 @@ known pose errors (3 random choreographies each; "realistic" adds 1%-of-height k
 
 | member | true offset | measured (clean) | measured (realistic) |
 |---|---|---|---|
-| M1-M3 | 0 ms | −0.1 | −0.5 to −2.0 |
-| M4 | −33 ms | −33.1 | −35.3 ± 0.5 |
-| M5 | +33 ms | +32.9 | +31.3 ± 0.7 |
+| M1-M3 | 0 ms | −0.1 | −0.5 to −1.7 |
+| M4 | −33 ms | −33.1 | −35.2 ± 0.6 |
+| M5 | +33 ms | +32.9 | +31.3 ± 0.5 |
 | M6 | +67 ms | +66.9 | +64.8 ± 1.0 |
-| M7 | +133 ms | +132.9 | +130.8 ± 0.5 |
+| M7 | +133 ms | +132.9 | +131.1 ± 0.7 |
 
 | | per-window error | windows measured | trusted but > 30 ms wrong |
 |---|---|---|---|
 | clean | 0.4 ms | 99% | 0% |
-| realistic | 3.3 ms (95th pct 10 ms) | 98% | 0% |
+| realistic | 3.2 ms (95th pct 10 ms) | 98% | 0% |
 
 Planted pose errors, realistic: M2's left forearm +20° measured **19.0°** and M6's right shin
 +15° measured **14.6°**, with the right bone and body part named in 100% of runs and the same
@@ -91,17 +92,35 @@ bone on the other members at 2.5-2.9°. M6 had both errors, and their timing was
 
 | condition | windows measured | error when measured | trusted but > 30 ms wrong |
 |---|---|---|---|
-| keypoint noise 2% / 4% of height | 95% / 45% | 4.6 / 8.4 ms | 1% / 5% |
+| keypoint noise 2% / 4% of height | 95% / 42% | 4.6 / 10.1 ms | 1% / 8% |
 | 10 fps (vs 30) | 98% | 5.3 ms (vs 2.6) | 0% |
-| member hidden 1 s / 4 s | 62% / 33% | 4.6 / 3.8 ms | 0% |
+| member hidden 1 s / 4 s | 62% / 33% | 4.7 / 3.8 ms | 2% / 0% |
 | member leaves the frame for 10 s | 16% | 4.9 ms | 0% |
 | knees and ankles cut off by the frame | 97% | 4.6 ms | 1% |
-| fast spin, pose model swaps left/right for 2 of 5 members | 69% | 4.9 ms | 2% |
-| groove repeating every 0.36 s (shorter than the search) | 17% | 2.4 ms | 1% |
-| pose-model glitches on 2% of frames (left/right swaps, misplaced wrists), without / with glitch handling | 72% / 99% | 9.4 / 3.2 ms | 10% / 0% |
+| fast spin, pose model swaps left/right for 2 of 5 members | 84% | 3.2 ms | 0% |
+| groove repeating every 0.36 s (shorter than the search) | 17% | 2.7 ms | 1% |
+| pose-model glitches on 2% of frames (left/right swaps, misplaced wrists), without / with glitch handling | 75% / 99% | 8.2 / 3.3 ms | 7% / 0% |
 | pose error of 5° | right bone named 100%, but 4.5° vs a 2.9° floor: barely detectable | | |
 
 ![Failure sweeps](docs/media/sweeps.png)
+
+**On real footage** (BTS dance practice, 3:50, 7 members). There's no answer key, so one is
+planted: a real member's track is delayed by 33 / 67 / 133 ms and the measurement is repeated
+(`syncscore shift-test`). This keeps the real pose noise, styling and tracking errors in.
+
+| | measured | error | > 30 ms wrong | truth inside the 90% interval |
+|---|---|---|---|---|
+| single windows, strict gates | 3% of windows | 7.0 ms | 4% | |
+| single windows, 4 s long, gates loosened to 0.2 (before the tracking fix) | 23% | 14 ms | 13% | |
+| **32 s sections** (pooled, with intervals) | 19% of the planted members' sections | 11.7 ms | 0% | 83% (claimed 90%: slightly overconfident) |
+
+(3 members × 3 shifts; after the tracking fix below. One member, M2, never gets a section reading,
+even with a planted shift: their timing varies too much from section to section to state a
+number, and the tool says so instead.)
+
+Per window the measurement noise is about ±12-15 ms, but window offsets spread about ±60 ms,
+and that spread comes from the dancing (real timing variation, or styling read as timing). That's
+why a reliable answer needs about 30 s on this clip.
 
 **What these numbers do and don't say.** They measure the *method* after pose extraction.
 They don't measure the pose model or tracker on real dancers. Synthetic motion is smoother than
@@ -111,6 +130,10 @@ Real accuracy is bounded by the pose model.
 
 ## Limitations
 
+- **Facing a different way.** When a member's shoulder and hip lines both point the opposite way
+  to the group's (they face away, or the pose model swapped their left and right), their pose
+  can't be compared in 2D. Those frames are left out of pose errors and reported as a share,
+  instead of showing up as 180° "errors".
 - **2D only.** Bone directions are measured in the image. Members turned at different angles
   to the camera show slightly different directions for the same 3D pose, which reads as shape
   error. Lifting to 3D would fix this at the cost of a second model with its own errors.
@@ -123,6 +146,18 @@ Real accuracy is bounded by the pose model.
 - **Two members:** the method can say that they differ, never who is wrong.
 - **Shape errors read about 5% small**, because the member is part of their own shape reference
   (the price of robustness in small groups). Errors under about 5° are at the noise floor.
+- **Real footage needs long sections.** On the test clip a trustworthy timing answer needs about
+  30 s per member, and only a third to half of member-sections get one. Moment-to-moment timing
+  on real dance is not solved here.
+- **Style or timing?** A dancer who styles a move differently can read as early or late. The
+  planted-shift test proves the measurement responds correctly to timing changes, but it can't
+  separate real timing variation from styling.
+- **Tracking on the test clip:** ByteTrack gave 159 IDs for 7 people. The stitching first threw
+  away 15% of the member detections (it treated long, badly colour-matched pieces as passers-by);
+  after the fix 96% are kept and every member is visible 72-93% of the time, from 99 rejoined
+  pieces. Identity errors at crossings are still possible: 19 suspected swaps, and the true rate
+  needs the hand audit.
+- **Section intervals are slightly overconfident on real footage** (83% coverage for a claimed 90%).
 - Thresholds (35 ms "in sync", 135 ms "off", 15° "pose off") are choices, not standards.
 
 ## Built on Optiqen
@@ -153,23 +188,36 @@ python -m venv .venv
 syncscore demo --out results/demo                 # synthetic group through every output
 syncscore validate --out results/validate         # the benchmark above (a few minutes, runs in parallel)
 syncscore analyze path/to/video.mp4 --out results/   # real video
+syncscore shift-test --results results/               # plant known delays in real tracks, check they come back
 syncscore audit path/to/video.mp4 --results results/ # sample frames to label IDs by hand
 syncscore audit-score results/audit/ids.csv          # true ID-swap rate
 pytest                                             # unit tests for the alignment math and the synthetic recovery
 ```
 
-`analyze` writes `summary.json` / `summary.csv` (per member and per 8 s section: mean offset,
-share in sync, worst moments, body part most often off), `heatmap.png`, `report_cards/`,
+`analyze` writes `summary.json` / `summary.csv` (per member and per section: offset with a 90%
+interval, share of sections in sync, strict single-window moments, body part most often off), `heatmap.png`, `report_cards/`,
 `skeletons.mp4`, `smoothing_example.png`, `tracking_report.json` and the derived keypoints. The
 first run downloads the pose weights (about 20 MB). Settings live in
 [configs/default.yaml](configs/default.yaml); sections can be set there by timestamps.
 
+**Synthetic demo** (known answers: M2 drifts from 0 to +120 ms after 16 s, M3 is 33 ms early,
+M4 67 ms late, M5's left elbow is 25° off from 6 to 14 s; 10 s sections):
+
 | | |
 |---|---|
 | ![Heatmap](docs/media/demo_heatmap.png) | ![Report card](docs/media/demo_report_card_M2.png) |
-| *Timeline heatmap (demo): M2 drifts late in the second half, M3 is early, M4 late; hatched = no reading.* | *Report card (demo): M2's drift, timing and pose by body part, worst moments.* |
+| *Heatmap: each cell is one member in one section, with its 90% interval.* | *Report card: M2's drift appears in the last section.* |
 
 ![Smoothing before and after](docs/media/demo_smoothing.png)
+
+**Real clip** (BTS dance practice, 32 s sections; derived skeletons and plots only, no footage):
+
+![Skeleton-only render of the real clip](docs/media/bts_skeletons.gif)
+
+| | |
+|---|---|
+| ![Heatmap of the real clip](docs/media/bts_heatmap.png) | ![Report card of one member](docs/media/bts_report_card_M4.png) |
+| *Hatched = no reliable reading; grey ≈ values were measured but too uncertain to state. Every member who could be measured sits within about ±30 ms of the group.* | *Pose errors are shown relative to the group's own spread; bone errors near 180° are flagged as likely left/right label swaps.* |
 
 ## Layout
 

@@ -38,7 +38,11 @@ sync:
 sections:
   # Either list explicit [start_s, end_s, name] sections, or leave empty for fixed chunks.
   explicit: []
-  chunk_s: 8.0
+  chunk_s: 32.0               # on real footage about 30 s is needed for a trustworthy reading (docs/walkthrough.md)
+  min_peak: 0.2               # windows pooled into a section need only this correlation (they are not trusted alone)
+  min_windows: 8              # fewer usable windows in a section = no reading
+  min_blocks: 5               # ...or fewer independent (non-overlapping) stretches: the interval would be meaningless
+  max_ci_ms: 50               # a 90% interval wider than this = no reading
 
 render:
   in_sync_ms: 35              # |offset| at or below this is drawn green

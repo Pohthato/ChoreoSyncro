@@ -166,7 +166,7 @@ full pipeline. It reports three numbers, and the third is the important one:
 
 ## Stage 5: outputs (`syncscore demo`, and the same writer for `analyze`)
 
-- `summary.json` / `summary.csv`: per member, overall and per 8 s section: mean offset,
+- `summary.json` / `summary.csv`: per member, overall and per section (8 s at the time, 32 s after Stage A): mean offset,
   mean |offset|, spread, share of time in sync (|offset| ≤ 35 ms), timing and pose error per
   body part, the body part most often off, the 3 worst timing moments and the 3 worst pose
   moments (one per second, named in the member's own left/right even if mirrored).
@@ -245,3 +245,83 @@ tuned.
   about 30 / 66 / 133 ms in every setting tried; single windows were too noisy (6-13% confidently
   wrong once thresholds were loose enough to measure anything). That's why the next step reports
   timing per section, as a robust median with an uncertainty, instead of per window.
+
+## Stage A: timing per section (`sync/sections.py`)
+
+**Why:** on the real clip single windows are rarely trustworthy alone, but many of them
+together are. So the main answer becomes one offset per member per section, with a 90%
+interval.
+
+**How:**
+1. Pool every window that passes the hard gates (group moving, member visible, no ambiguous
+   second peak) and a loose correlation floor (0.2). The median is robust to the bad ones.
+2. **Keep "0 ms" meaning the same thing.** The first version re-centred each section on whoever
+   was visible. A test hid one member for 10 s and everyone else's offsets moved by 20 ms,
+   because the "median member" had silently become someone else. Now each section's clock
+   drift is estimated by comparing each visible member with *their own* typical offset, and
+   "0 ms" stays the clip's median member.
+3. **Honest intervals:** a **joint block bootstrap**. Overlapping windows aren't independent (each
+   frame is in 8 of them), so resample non-overlapping blocks, the same blocks for all members,
+   and redo the re-centring in each draw so the reference's own noise is included. The first
+   version resampled one member at a time and claimed 90% intervals that held the truth only 75%
+   of the time. A section needs at least 5 blocks: with 2 the "interval" held the truth only 41%
+   of the time.
+
+**What the real clip says** (shifts planted into real members' tracks, `syncscore shift-test`):
+- Per window, the **measurement noise is about ±12-15 ms**: the change between the run with and
+  without a planted shift is tight. But window offsets themselves spread about ±60 ms, and that
+  spread is the same in both runs, so it comes from the dancing: either real moment-to-moment
+  timing variation, or styling the method reads as timing. The planted test can't tell those two
+  apart.
+- Because of that spread, a trustworthy section needs **about 30 s**. At 8 s no member-section
+  qualified; at 32 s about a third did, with errors of about 10 ms (from only 12 planted
+  comparisons, so treat it as indicative). Default sections are 32 s; better, mark the song's
+  real parts in the config (`sections.explicit`).
+- Planted shifts come back about **10% high** (+74 for +67). Delaying one member also moves the
+  group reference the others are measured against, so the shift partly counts twice. That's a
+  property of measuring against the group, not noise.
+
+**Likely interview question:** *"Why not just lower the threshold?"* It was tried. Every looser
+threshold measured more windows and was confidently wrong more often (8% → 13%). Pooling gives
+coverage without pretending a single noisy window is an answer.
+
+## Stage C: tracking that doesn't throw dancers away
+
+**Found by looking, not by metrics.** Drawing the tracked skeletons on one real frame showed a
+dancer with no skeleton at all. The detector had found all 7 people in that frame. The
+stitching had thrown one away: a 10-second track that matched no member slot's clothing colour
+well enough, so it was treated as a passer-by. Across the clip **15% of clear detections** were
+dropped this way, in stretches up to 25 s, while only 19 frames in the whole video had more than
+7 people.
+
+**Fix:** in a dance video nobody long-lived is a passer-by. A tracklet of 1 s or more is always
+attached when a member slot is free for its whole span, however poor the colour match (lighting
+changes as dancers move around the room). Only short tracklets can be rejected for a poor fit.
+Result: **96%** of clear detections kept, every member visible 72-93% of the time (was 55-93%).
+
+**Code that was deleted:** a "make room" repair (move shorter tracklets out of the way when all
+slots are busy). On the real clip it was tried 14 times and never succeeded, because tracklets
+are placed longest first. Its test had also passed for the wrong reason. Code that can't be
+shown to matter goes.
+
+**What it bought** (planted shifts on the re-tracked clip): single windows 11 → 7 ms error,
+sections 0% confidently wrong, with 83% of truths inside the claimed 90% intervals.
+
+**One more thing the real report cards showed:** "worst pose moments" of exactly 180° on the
+shoulders, hips and a forearm. Those aren't poses: the member faced a different way from the
+group, or the model swapped their left and right. A 2D comparison is meaningless there, so frames
+where *both* the shoulder line and the hip line are reversed (more than 120°) relative to the
+group are left out of pose errors and reported as "facing a different way: N% of frames".
+
+**Pose errors judged against the group, not against perfection.** On the real clip every member
+showed about 50° of arm "error" and every member's arms were "most often off". That's 2D camera
+perspective and personal styling, not seven people dancing wrong. Two changes:
+- a body part is off in a frame when the member's worst bone is more than 15° beyond the
+  *group's typical error* for that part in that frame (the report card shows this excess),
+- "off more than the others" names a part only if this member is off there at least 10
+  percentage points more often than the group's median member.
+
+On the real clip no member's pose now stands out (a professional group). On the synthetic demo
+only the member with the planted elbow error is named. Bone errors of 150° or more are labelled
+"likely a left/right label swap": usually the pose model, possibly real, so flagged rather than
+hidden.

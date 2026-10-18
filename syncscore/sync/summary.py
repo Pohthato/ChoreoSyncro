@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import warnings
 import json
 from pathlib import Path
 
@@ -10,28 +11,51 @@ import numpy as np
 from ..config import Config
 from ..features.bones import BONE_NAMES, PART_OF_BONE, PARTS, mirror_name
 from .measure import SyncResult
+from .consensus import nanmedian_first_axis
+from .sections import SectionTiming, section_timing
 
 
 def make_sections(config: Config, duration_s: float) -> list[tuple[float, float, str]]:
     if config.sections.explicit:
         return [(float(a), float(b), str(name)) for a, b, name in config.sections.explicit]
     chunk = config.sections.chunk_s
-    starts = np.arange(0.0, duration_s, chunk)
-    return [(float(s), float(min(s + chunk, duration_s)), f"{s:.0f}-{min(s + chunk, duration_s):.0f}s") for s in starts]
+    edges = list(np.arange(0.0, duration_s, chunk)) + [duration_s]
+    if len(edges) > 2 and edges[-1] - edges[-2] < chunk / 2:
+        del edges[-2]  # fold a short tail into the section before it
+    return [(float(a), float(b), f"{a:.0f}-{b:.0f}s") for a, b in zip(edges[:-1], edges[1:])]
 
 
-MIN_OFF_SHARE = 0.1  # a part must be off in at least 10% of its measurements to be named
+LABEL_SWAP_DEG = 150.0  # bone errors this large are flagged as a likely left/right label swap
+MIN_EXTRA_SHARE = 0.1  # off at least 10 percentage points more often than the group's typical member
 
 
-def _most_often(counts: np.ndarray, totals: np.ndarray) -> tuple[str | None, float]:
-    share = np.where(totals > 0, counts / np.maximum(totals, 1), 0.0)
-    if share.max(initial=0.0) < MIN_OFF_SHARE:
-        return None, float(share.max(initial=0.0))
-    p = int(np.argmax(share))
-    return PARTS[p], float(share[p])
+def _shares(counts: np.ndarray, totals: np.ndarray) -> dict:
+    return {PARTS[p]: (float(counts[p] / totals[p]) if totals[p] else None) for p in range(len(PARTS))}
 
 
-def _member_block(result: SyncResult, i: int, window_mask: np.ndarray, frame_mask: np.ndarray, config: Config) -> dict:
+def _name_parts(blocks: list[dict], kind: str) -> None:
+    """Name each member's body part most often off, *compared with the other members*.
+
+    On real 2D footage some parts are noisy for everyone (arms, mostly). Judged alone, every
+    member's arms come out "most often off", which says nothing about any one of them. So a
+    part is named only if this member is off there at least MIN_EXTRA_SHARE more often than the
+    group's median member is.
+    """
+    shares = np.array([[np.nan if b[f"{kind}_off_share_by_part"][p] is None else b[f"{kind}_off_share_by_part"][p] for p in PARTS] for b in blocks])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        typical = np.nanmedian(shares, axis=0)
+    for b, row in zip(blocks, shares):
+        extra = np.nan_to_num(row - typical, nan=-1.0)
+        p = int(np.argmax(extra))
+        named = extra[p] >= MIN_EXTRA_SHARE
+        b[f"{kind}_part_most_often_off"] = PARTS[p] if named else None
+        b[f"{kind}_part_off_share"] = float(row[p]) if named else None
+        b[f"{kind}_part_off_share_group"] = float(typical[p]) if named else None
+
+
+def _member_block(result: SyncResult, i: int, window_mask: np.ndarray, frame_mask: np.ndarray, config: Config,
+                  group_part: np.ndarray, group_bone: np.ndarray) -> dict:
     in_sync = config.render.in_sync_ms
     ok = result.reliable[i] & window_mask
     offsets = result.offset_ms[i, ok]
@@ -48,14 +72,26 @@ def _member_block(result: SyncResult, i: int, window_mask: np.ndarray, frame_mas
     part_off = np.abs(np.nan_to_num(result.part_offset_ms[i][:, window_mask])) > in_sync
     part_mean = [float(np.nanmean(result.part_offset_ms[i, p][result.part_reliable[i, p] & window_mask])) if (result.part_reliable[i, p] & window_mask).any() else None for p in range(len(PARTS))]
     block["timing_offset_by_part_ms"] = dict(zip(PARTS, part_mean))
-    block["timing_part_most_often_off"], block["timing_part_off_share"] = _most_often((part_off & part_ok).sum(axis=1), part_ok.sum(axis=1))
+    block["timing_off_share_by_part"] = _shares((part_off & part_ok).sum(axis=1), part_ok.sum(axis=1))
     # Shape per body part, judged by the part's worst bone: one shin 30 degrees off is a leg
     # problem even though the other three leg bones are fine (an average would hide it).
+    # And judged *against the group*: on real 2D footage camera perspective and personal styling
+    # put every dancer's arms tens of degrees from the consensus, so an absolute threshold flags
+    # everyone all the time. A part is "off" when the member's error is more than the threshold
+    # above the group's typical error for that part in that frame.
     shape = worst_bone_by_part(result.bone_shape_deg[i][frame_mask])
-    known = np.isfinite(shape)
-    off = np.nan_to_num(shape) > config.sync.shape_threshold_deg
-    block["shape_error_by_part_deg"] = {PARTS[p]: (float(np.nanmean(shape[:, p])) if known[:, p].any() else None) for p in range(len(PARTS))}
-    block["shape_part_most_often_off"], block["shape_part_off_share"] = _most_often((off & known).sum(axis=0), known.sum(axis=0))
+    group = group_part[frame_mask]
+    excess = shape - group
+    known = np.isfinite(excess)
+    off = np.nan_to_num(excess) > config.sync.shape_threshold_deg
+
+    def mean_by_part(values):
+        return {PARTS[p]: (float(np.nanmean(values[:, p])) if np.isfinite(values[:, p]).any() else None) for p in range(len(PARTS))}
+
+    block["shape_error_by_part_deg"] = mean_by_part(shape)
+    block["group_shape_error_by_part_deg"] = mean_by_part(np.where(np.isfinite(shape), group, np.nan))
+    block["shape_excess_by_part_deg"] = mean_by_part(excess)
+    block["shape_off_share_by_part"] = _shares((off & known).sum(axis=0), known.sum(axis=0))
 
     worst = []
     for k in np.argsort(-np.abs(offsets))[:3]:
@@ -66,11 +102,11 @@ def _member_block(result: SyncResult, i: int, window_mask: np.ndarray, frame_mas
                       "part_furthest_off": PARTS[int(np.argmax(parts))] if parts.max() >= 0 else None})
     block["worst_timing_moments"] = worst
 
-    bone = result.bone_shape_deg[i].copy()
+    bone = result.bone_shape_deg[i] - group_bone  # how far above the group's typical, per bone
     bone[~frame_mask] = np.nan
     worst_shape = []
     if np.isfinite(bone).any():
-        per_frame = np.nanmax(np.nan_to_num(bone, nan=-1), axis=1)
+        per_frame = np.nanmax(np.nan_to_num(bone, nan=-1e9), axis=1)
         frame_index = np.arange(len(per_frame))
         taken = []
         for f in np.argsort(-per_frame):
@@ -79,11 +115,15 @@ def _member_block(result: SyncResult, i: int, window_mask: np.ndarray, frame_mas
             if any(abs(f - t) < result.fps for t in taken):  # one entry per second
                 continue
             taken.append(f)
-            b = int(np.nanargmax(np.nan_to_num(bone[f], nan=-1)))
+            b = int(np.nanargmax(np.nan_to_num(bone[f], nan=-1e9)))
             name = BONE_NAMES[b]
             if _mirrored_at(result, i, f):
                 name = mirror_name(name)  # report in the member's own left/right
-            worst_shape.append({"time_s": round(float(frame_index[f] / result.fps), 2), "bone": name, "error_deg": round(float(per_frame[f]), 1)})
+            worst_shape.append({"time_s": round(float(frame_index[f] / result.fps), 2), "bone": name,
+                                "error_deg": round(float(result.bone_shape_deg[i, f, b]), 1), "above_group_deg": round(float(per_frame[f]), 1),
+                                # A bone pointing almost straight against the group's is usually the pose
+                                # model flipping that bone's labels; it can be real, so it is flagged, not hidden.
+                                "likely_label_swap": bool(result.bone_shape_deg[i, f, b] >= LABEL_SWAP_DEG)})
     block["worst_shape_moments"] = worst_shape
     return block
 
@@ -103,19 +143,55 @@ def _mirrored_at(result: SyncResult, i: int, frame: int) -> bool:
     return bool(result.mirrored[i, k])
 
 
-def summarize(result: SyncResult, config: Config) -> dict:
+def _r(value, digits=1):
+    return None if value is None or not np.isfinite(value) else round(float(value), digits)
+
+
+def summarize(result: SyncResult, config: Config, timing: SectionTiming | None = None) -> dict:
+    """Two levels of timing, kept apart on purpose:
+    - per section (`section_*`): a robust median over many windows with a 90% interval. This is
+      the main answer on real footage.
+    - per window (`mean_offset_ms`, `worst_timing_moments`...): only windows that pass the strict
+      gates on their own. Precise moments, but on real dance they are rare.
+    """
     duration = result.n_frames / result.fps
     sections = make_sections(config, duration)
+    timing = timing or section_timing(result, sections, config)
+    group_part = nanmedian_first_axis(np.stack([worst_bone_by_part(result.bone_shape_deg[i]) for i in range(len(result.names))]))
+    group_bone = nanmedian_first_axis(result.bone_shape_deg)
     frames_t = np.arange(result.n_frames) / result.fps
+    in_sync = config.render.in_sync_ms
     members = []
     for i, name in enumerate(result.names):
-        entry = {"member": name, "overall": _member_block(result, i, np.ones(len(result.window_centers_s), bool), np.ones(result.n_frames, bool), config),
-                 "mirrored_share": float(result.mirrored[i].mean()), "sections": []}
-        for start, end, label in sections:
+        overall = _member_block(result, i, np.ones(len(result.window_centers_s), bool), np.ones(result.n_frames, bool), config, group_part, group_bone)
+        measured = timing.reliable[i]
+        values = timing.offset_ms[i, measured]
+        overall.update({
+            "section_typical_offset_ms": _r(np.median(values)) if values.size else None,
+            "sections_measured_share": round(float(measured.mean()), 3),
+            "sections_in_sync_share": round(float((np.abs(values) <= in_sync).mean()), 3) if values.size else None,
+        })
+        overall["facing_differently_share"] = round(float(result.facing_differently[i].mean()), 3)
+        entry = {"member": name, "overall": overall, "mirrored_share": float(result.mirrored[i].mean()), "sections": []}
+        for s, (start, end, label) in enumerate(sections):
             wmask = (result.window_centers_s >= start) & (result.window_centers_s < end)
             fmask = (frames_t >= start) & (frames_t < end)
-            entry["sections"].append({"section": label, "start_s": start, "end_s": end, **_member_block(result, i, wmask, fmask, config)})
+            block = {"section": label, "start_s": start, "end_s": end,
+                     "section_offset_ms": _r(timing.offset_ms[i, s]) if timing.reliable[i, s] else None,
+                     "section_interval_ms": [_r(timing.low_ms[i, s]), _r(timing.high_ms[i, s])] if timing.reliable[i, s] else None,
+                     "section_reliable": bool(timing.reliable[i, s]),
+                     # Kept even when not reliable, so a reader can see "measured but too uncertain".
+                     "section_estimate_ms": _r(timing.offset_ms[i, s]),
+                     "section_estimate_interval_ms": [_r(timing.low_ms[i, s]), _r(timing.high_ms[i, s])],
+                     "section_windows": int(timing.windows[i, s]),
+                     "section_blocks": int(timing.blocks[i, s]),
+                     **_member_block(result, i, wmask, fmask, config, group_part, group_bone)}
+            entry["sections"].append(block)
         members.append(entry)
+    for kind in ("timing", "shape"):
+        _name_parts([m["overall"] for m in members], kind)
+        for s in range(len(sections)):
+            _name_parts([m["sections"][s] for m in members], kind)
     return {"fps": result.fps, "duration_s": duration, "sign_convention": "+ ms = behind the group (median member), - = ahead",
             "in_sync_ms": config.render.in_sync_ms, "shape_threshold_deg": config.sync.shape_threshold_deg,
             "sections": [{"name": n, "start_s": a, "end_s": b} for a, b, n in sections], "members": members}
@@ -126,12 +202,16 @@ def write_summary(summary: dict, out: Path) -> None:
     (out / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     with open(out / "summary.csv", "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["member", "section", "coverage", "mean_offset_ms", "mean_abs_offset_ms", "in_sync_share",
+        writer.writerow(["member", "section", "section_offset_ms", "section_low_ms", "section_high_ms",
+                         "strict_window_coverage", "strict_mean_offset_ms", "strict_mean_abs_offset_ms", "strict_in_sync_share",
                          "timing_part_most_often_off", "shape_part_most_often_off"] + [f"shape_{p}_deg" for p in PARTS])
         for member in summary["members"]:
             for block in [{"section": "overall", **member["overall"]}] + member["sections"]:
                 def r(v, d=1):
                     return "" if v is None else round(v, d)
-                writer.writerow([member["member"], block["section"], r(block["coverage"], 2), r(block["mean_offset_ms"]),
+                interval = block.get("section_interval_ms") or [None, None]
+                section_offset = block.get("section_offset_ms", block.get("section_typical_offset_ms"))
+                writer.writerow([member["member"], block["section"], r(section_offset), r(interval[0]), r(interval[1]),
+                                 r(block["coverage"], 2), r(block["mean_offset_ms"]),
                                  r(block["mean_abs_offset_ms"]), r(block["in_sync_share"], 2), block["timing_part_most_often_off"] or "",
                                  block["shape_part_most_often_off"] or ""] + [r(block["shape_error_by_part_deg"][p]) for p in PARTS])

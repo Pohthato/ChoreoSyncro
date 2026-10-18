@@ -41,7 +41,9 @@ def test_summary_names_the_planted_errors(written):
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
     members = {m["member"]: m["overall"] for m in summary["members"]}
     assert members["M3"]["mean_offset_ms"] == pytest.approx(100.0, abs=5.0)
+    assert members["M3"]["section_typical_offset_ms"] == pytest.approx(100.0, abs=5.0)
+    assert members["M3"]["sections_measured_share"] == 1.0
     assert members["M2"]["shape_part_most_often_off"] == "legs"
     assert members["M2"]["worst_shape_moments"][0]["bone"] == "right_shin"
     assert members["M1"]["shape_part_most_often_off"] is None
-    assert len(summary["members"][0]["sections"]) == 2  # 16 s in 8 s chunks
+    assert len(summary["members"][0]["sections"]) == 1  # 16 s clip, 32 s sections
