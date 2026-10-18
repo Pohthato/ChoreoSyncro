@@ -29,6 +29,9 @@ class TrackingConfig:
     stitch_max_gap_s: float = 2.0
     crossing_iou: float = 0.3
     fill_max_gap_s: float = 2.0  # fill member gaps up to this long with real detections (0 = off)
+    recover: bool = True        # re-detect frames inside such gaps at a lower threshold
+    recover_conf: float = 0.05
+    recover_imgsz: int = 1280
 
 
 @dataclass

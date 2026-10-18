@@ -12,6 +12,9 @@ tracking:
   stitch_max_gap_s: 2.0       # rejoin broken tracks separated by at most this long
   crossing_iou: 0.3           # box overlap that counts as two members crossing
   fill_max_gap_s: 2.0         # fill a member's gap up to this long with real, unused detections (0 = off)
+  recover: true               # also re-run the pose model on just the frames still missing someone in such a gap
+  recover_conf: 0.05          # ...at this lower box threshold (a half-hidden dancer scores low)
+  recover_imgsz: 1280         # ...and this larger input size
 
 smoothing:
   min_cutoff: 1.0             # One Euro: lower = smoother when still (Hz). Tuned in docs/walkthrough.md
