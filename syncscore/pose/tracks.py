@@ -198,6 +198,7 @@ class MemberTracks:
     box: np.ndarray   # (M, T, 4)
     hist: np.ndarray  # (M, T, H) torso colour, zeros where unseen
     fragments: list   # tracker IDs joined into each member
+    rows: np.ndarray  # (M, T) the Detections row each member uses per frame, -1 where unseen
 
 
 def assemble(det: Detections, slots: list[Slot]) -> MemberTracks:
@@ -208,17 +209,19 @@ def assemble(det: Detections, slots: list[Slot]) -> MemberTracks:
     box = np.full((m, n, 4), np.nan)
     hist = np.zeros((m, n, det.hist.shape[1]))
     best_conf = np.full((m, n), -1.0)
+    rows = np.full((m, n), -1, dtype=int)
     for i, slot in enumerate(slots):
         for t in slot.tracklets:
             for row, f in zip(t.rows, t.frames):
                 if det.box_conf[row] > best_conf[i, f]:  # overlapping frames keep the surer detection
                     best_conf[i, f] = det.box_conf[row]
                     xy[i, f], conf[i, f], box[i, f], hist[i, f] = det.xy[row], det.kconf[row], det.box[row], det.hist[row]
+                    rows[i, f] = row
     # Name members left to right by where they stand, so names are stable and readable.
     with np.errstate(all="ignore"):
         order = np.argsort([np.nanmedian((box[i, :, 0] + box[i, :, 2]) / 2) for i in range(m)])
     fragments = [sorted(t.track_id for t in slots[i].tracklets) for i in order]
-    return MemberTracks(xy[order], conf[order], box[order], hist[order], fragments)
+    return MemberTracks(xy[order], conf[order], box[order], hist[order], fragments, rows[order])
 
 
 def _iou(a: np.ndarray, b: np.ndarray) -> np.ndarray:
