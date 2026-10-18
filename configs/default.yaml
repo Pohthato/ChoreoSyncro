@@ -44,6 +44,18 @@ sections:
   min_blocks: 5               # ...or fewer independent (non-overlapping) stretches: the interval would be meaningless
   max_ci_ms: 50               # a 90% interval wider than this = no reading
 
+hits:
+  # Timing at the group's big simultaneous movements (syncscore/sync/hits.py). Scored by
+  # `syncscore shift-test`; not used in the report (it added no reliable readings on the test
+  # clip, see docs/walkthrough.md, Stage B).
+  prominence: 1.5             # a group hit rises this far above its surroundings (x a member's typical speed)
+  max_offset_ms: 400          # search range for each member's matching peak
+  max_second_peak: 0.7        # another peak at least this high (relative) in range = a tie...
+  min_agreement: 0.5          # ...won only by the peak whose movement direction agrees this well (cosine) with the others'
+  min_others: 3               # other members with a matched peak needed for a reference
+  min_hits: 5                 # fewer matched hits in a section = no reading from hits
+  max_ci_ms: 50               # a 90% interval wider than this = no reading
+
 render:
   in_sync_ms: 35              # |offset| at or below this is drawn green
   off_sync_ms: 135            # |offset| at or above this is drawn red

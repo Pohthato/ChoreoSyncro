@@ -112,7 +112,10 @@ planted: a real member's track is delayed by 33 / 67 / 133 ms and the measuremen
 |---|---|---|---|---|
 | single windows, strict gates | 3% of windows | 7.0 ms | 4% | |
 | single windows, 4 s long, gates loosened to 0.2 (before the tracking fix) | 23% | 14 ms | 13% | |
-| **32 s sections** (pooled, with intervals) | 19% of the planted members' sections | 11.7 ms | 0% | 83% (claimed 90%: slightly overconfident) |
+| **32 s sections** (pooled, with intervals) | 22% of the planted members' sections | 11.7 ms | 0% | 83% (claimed 90%: slightly overconfident) |
+| single hits (tried, not in the report) | 19% of hits | about 3 ms typical, 22 ms mean | 3% | |
+| 32 s sections from hits | 0% | | | |
+| 32 s sections, windows or hits | 24% | 12.8 ms | 0% | 83% |
 
 (3 members × 3 shifts; after the tracking fix below. One member, M2, never gets a section reading,
 even with a planted shift: their timing varies too much from section to section to state a
@@ -121,6 +124,17 @@ number, and the tool says so instead.)
 Per window the measurement noise is about ±12-15 ms, but window offsets spread about ±60 ms,
 and that spread comes from the dancing (real timing variation, or styling read as timing). That's
 why a reliable answer needs about 30 s on this clip.
+
+**Tried and measured, not used: timing at the hits.** The idea was that the group's big
+simultaneous movements are cleaner timing cues than the grooving in between: read each
+member's speed peak within ±400 ms of the hit, to a fraction of a frame
+([sync/hits.py](syncscore/sync/hits.py)). The matching works (each member's own peak follows a
+planted shift 99% of the time), but the dancing doesn't cooperate: at the same hit, members'
+peaks spread with an IQR of 45-100 ms, and a 32 s section holds only 0-8 matched hits per member.
+No section from hits got an interval under 50 ms, and adding them to windows read 24% of
+sections instead of 22%. So the report stays on window sections; `syncscore shift-test` still
+scores the hits, so the result is reproducible. The full story is in
+[docs/walkthrough.md](docs/walkthrough.md), Stage B.
 
 **What these numbers do and don't say.** They measure the *method* after pose extraction.
 They don't measure the pose model or tracker on real dancers. Synthetic motion is smoother than
@@ -148,7 +162,8 @@ Real accuracy is bounded by the pose model.
   (the price of robustness in small groups). Errors under about 5° are at the noise floor.
 - **Real footage needs long sections.** On the test clip a trustworthy timing answer needs about
   30 s per member, and only a third to half of member-sections get one. Moment-to-moment timing
-  on real dance is not solved here.
+  on real dance is not solved here. Timing at the group's big hits was tried and didn't help:
+  members' peaks spread about as widely at the hits as their timing does in the grooving.
 - **Style or timing?** A dancer who styles a move differently can read as early or late. The
   planted-shift test proves the measurement responds correctly to timing changes, but it can't
   separate real timing variation from styling.

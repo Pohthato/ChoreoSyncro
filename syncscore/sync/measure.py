@@ -19,6 +19,9 @@ benchmark tests exactly the code that runs on real footage.
 3. Per body part: the same lag search on just that part's bones.
 4. Shape: move the whole group's median pose onto the member's own clock and measure the
    angle per bone (see consensus.py for why shape includes the member and timing does not).
+5. Hits (hits.py): each member's speed peak at the group's big simultaneous movements. Scored
+   by the planted-shift test only; the report doesn't use them (they added no reliable
+   readings on real footage).
 """
 from __future__ import annotations
 
@@ -30,6 +33,7 @@ import numpy as np
 from ..config import Config
 from ..features.bones import BONE_NAMES, PART_OF_BONE, PARTS, bone_directions, mirror_keypoints
 from .consensus import group_median, leave_one_out_median, warp
+from .hits import hit_timing
 from .shape import shape_errors
 from .timing import Windows, estimate_lags, make_windows, velocity
 
@@ -59,6 +63,9 @@ class SyncResult:
     bone_shape_deg: np.ndarray     # (M, T, B) on the member's own (video) clock
     part_shape_deg: np.ndarray     # (M, T, P)
     facing_differently: np.ndarray # (M, T) shoulders and hips reversed vs the group: pose not comparable
+    hit_times_s: np.ndarray        # (H,) the group's hits (see hits.py)
+    hit_offset_ms: np.ndarray      # (M, H) member's peak minus the others' median peak; NaN = no clean match
+    hit_agreement: np.ndarray      # (M, H) how well the member's movement matched the group's direction there
     bone_names: tuple = BONE_NAMES
     part_names: tuple = PARTS
     notes: list = field(default_factory=list)
@@ -202,6 +209,9 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
         facing[i] = (np.nan_to_num(bone_deg[i, :, _SHOULDERS]) > FACING_DEG) & (np.nan_to_num(bone_deg[i, :, _HIPS]) > FACING_DEG)
         bone_deg[i, facing[i]] = np.nan
         part_deg[i, facing[i]] = np.nan
+    # Hits: every member's own peaks on the video clock, so this needs no alignment.
+    moving = [chosen(i)[2:] for i in range(members)]
+    hits = hit_timing([v for v, _ in moving], [vw for _, vw in moving], fps, config.hits)
 
     return SyncResult(
         fps=fps, names=list(names), n_frames=n_frames, window_centers_s=centers / fps, window_s=sc.window_s,
@@ -210,5 +220,6 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
         part_offset_ms=part_lag * frame_ms, part_reliable=part_ok, mirrored=mirrored,
         offset_curve_ms=curves * frame_ms, bone_shape_deg=bone_deg, part_shape_deg=part_deg,
         facing_differently=facing,
+        hit_times_s=hits.frames / fps, hit_offset_ms=hits.offset_ms, hit_agreement=hits.agreement,
     )
 

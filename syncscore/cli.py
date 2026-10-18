@@ -148,10 +148,13 @@ def _shift_test(args: argparse.Namespace) -> int:
     def ms(v):
         return "-" if v is None else f"{v:.1f} ms"
 
-    print(f"sections: measured {pct(result['section_coverage'])}, error {ms(result['section_mae_ms'])}, "
-          f"more than 30 ms wrong {pct(result['section_wrong'])}, truth inside the 90% interval {pct(result['section_within_interval'])}")
+    for kind, label in (("section", "sections from windows"), ("hit_section", "sections from hits"), ("combined_section", "sections, either")):
+        print(f"{label}: measured {pct(result[f'{kind}_coverage'])}, error {ms(result[f'{kind}_mae_ms'])}, "
+              f"more than 30 ms wrong {pct(result[f'{kind}_wrong'])}, truth inside the 90% interval {pct(result[f'{kind}_within_interval'])}")
     print(f"single windows (strict gates): measured {pct(result['window_coverage'])}, error {ms(result['window_mae_ms'])}, "
           f"more than 30 ms wrong {pct(result['window_wrong'])}")
+    print(f"single hits: measured {pct(result['hit_coverage'])}, error {ms(result['hit_mae_ms'])} (median {ms(result['hit_median_abs_ms'])}), "
+          f"more than 30 ms wrong {pct(result['hit_wrong'])}")
     return 0
 
 

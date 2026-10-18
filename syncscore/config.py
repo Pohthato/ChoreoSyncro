@@ -70,6 +70,17 @@ class SectionsConfig:
 
 
 @dataclass
+class HitsConfig:
+    prominence: float = 1.5      # a group hit rises this far above its surroundings (x a member's typical speed)
+    max_offset_ms: float = 400.0 # search range for the member's matching peak
+    max_second_peak: float = 0.7 # another peak at least this high (relative) in range = a tie...
+    min_agreement: float = 0.5   # ...won only by a peak whose direction agrees this well (cosine) with the others'
+    min_others: int = 3          # other members with a matched peak needed for a reference
+    min_hits: int = 5            # fewer matched hits in a section = no reading
+    max_ci_ms: float = 50.0      # a 90% interval wider than this = no reading
+
+
+@dataclass
 class RenderConfig:
     in_sync_ms: float = 35.0
     off_sync_ms: float = 135.0
@@ -83,6 +94,7 @@ class Config:
     features: FeaturesConfig = field(default_factory=FeaturesConfig)
     sync: SyncConfig = field(default_factory=SyncConfig)
     sections: SectionsConfig = field(default_factory=SectionsConfig)
+    hits: HitsConfig = field(default_factory=HitsConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
 
 

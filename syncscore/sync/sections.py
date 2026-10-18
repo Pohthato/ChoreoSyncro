@@ -44,6 +44,7 @@ class SectionTiming:
     blocks: np.ndarray     # (M, S) how many independent (non-overlapping) stretches they came from
     enough: np.ndarray     # (M, S) enough windows and blocks for an estimate to mean something
     reliable: np.ndarray   # (M, S) enough, and the interval is narrow enough to state
+    from_hits: np.ndarray | None = None  # (M, S) True where the reading comes from the group's hits
 
 
 def usable_windows(result: SyncResult, config: Config) -> np.ndarray:
@@ -122,4 +123,63 @@ def section_timing(result: SyncResult, sections: list, config: Config, draws: in
         starts_s=np.array([a for a, _, _ in sections]), ends_s=np.array([b for _, b, _ in sections]),
         names=[n for _, _, n in sections], offset_ms=offset, low_ms=low, high_ms=high, windows=count, blocks=n_blocks, enough=enough,
         reliable=enough & narrow & np.isfinite(offset),
+    )
+
+
+def combine_sections(windows: SectionTiming, hits: SectionTiming) -> SectionTiming:
+    """Per member and section, the reliable reading with the narrower interval (windows or hits).
+
+    The two come from different evidence (correlation over all the dancing vs. the moments the
+    whole group hits together), so they are not averaged: a section reads whichever one is more
+    certain, and `from_hits` says which. Used by the planted-shift test; the report uses
+    window sections only (hits added no reliable readings on real footage, see hits.py)."""
+    width_w = np.where(windows.reliable, windows.high_ms - windows.low_ms, np.inf)
+    width_h = np.where(hits.reliable, hits.high_ms - hits.low_ms, np.inf)
+    use_hits = hits.reliable & (width_h < width_w)
+
+    def pick(a, b):
+        return np.where(use_hits, b, a)
+
+    return SectionTiming(
+        starts_s=windows.starts_s, ends_s=windows.ends_s, names=windows.names,
+        offset_ms=pick(windows.offset_ms, hits.offset_ms), low_ms=pick(windows.low_ms, hits.low_ms), high_ms=pick(windows.high_ms, hits.high_ms),
+        windows=pick(windows.windows, hits.windows), blocks=pick(windows.blocks, hits.blocks),
+        enough=windows.enough | hits.enough, reliable=windows.reliable | hits.reliable, from_hits=use_hits,
+    )
+
+
+def hit_section_timing(result: SyncResult, sections: list, config: Config, draws: int = 400) -> SectionTiming:
+    """The same per-section answer, from the group's hits (hits.py) instead of windows.
+
+    Each hit offset is already relative to the median of the *other* members at that hit, so
+    there is no clock drift to remove. Hits are separate events (at least 0.3 s apart, each
+    read from a few frames around its own peak), so they are resampled one by one, the same
+    hits for every member in each draw. `windows` and `blocks` both count the matched hits.
+    """
+    cfg = config.hits
+    offsets = result.hit_offset_ms
+    members, n_sections = offsets.shape[0], len(sections)
+    offset = np.full((members, n_sections), np.nan)
+    low, high = offset.copy(), offset.copy()
+    count = np.zeros((members, n_sections), dtype=int)
+    rng = np.random.default_rng(0)
+    for s, (a, b, _) in enumerate(sections):
+        idx = np.flatnonzero((result.hit_times_s >= a) & (result.hit_times_s < b))
+        if idx.size == 0:
+            continue
+        values = offsets[:, idx]
+        count[:, s] = np.isfinite(values).sum(axis=1)
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            offset[:, s] = np.nanmedian(values, axis=1)
+            samples = np.stack([np.nanmedian(values[:, rng.integers(0, idx.size, size=idx.size)], axis=1) for _ in range(draws)])
+            low[:, s] = np.nanpercentile(samples, 5, axis=0)
+            high[:, s] = np.nanpercentile(samples, 95, axis=0)
+    enough = count >= cfg.min_hits
+    narrow = np.nan_to_num(high - low, nan=np.inf) <= cfg.max_ci_ms
+    return SectionTiming(
+        starts_s=np.array([a for a, _, _ in sections]), ends_s=np.array([b for _, b, _ in sections]),
+        names=[n for _, _, n in sections], offset_ms=np.where(count > 0, offset, np.nan), low_ms=low, high_ms=high,
+        windows=count, blocks=count.copy(), enough=enough, reliable=enough & narrow & np.isfinite(offset),
+        from_hits=np.ones((members, n_sections), dtype=bool),
     )

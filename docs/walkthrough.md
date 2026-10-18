@@ -325,3 +325,66 @@ On the real clip no member's pose now stands out (a professional group). On the 
 only the member with the planted elbow error is named. Bone errors of 150° or more are labelled
 "likely a left/right label swap": usually the pose model, possibly real, so flagged rather than
 hidden.
+
+## Stage B: timing at the group's hits (`sync/hits.py`), tried and measured, not in the report
+
+**Why:** sections need about 30 s on the real clip because most of the dancing is individually
+styled grooving. Plotting the clip showed moments where the whole group clearly moves at once.
+If those hits are cleaner timing cues, each one could be read to a fraction of a frame, and
+sections would need far less time.
+
+**How:**
+1. Speed per member: the RMS angular speed of their bones (the same glitch-gated velocities the
+   windows use), divided by their own typical speed, lightly smoothed.
+2. Group hits: peaks of the members' median speed that stand clearly above their surroundings.
+   74 on the clip, about one every 3 s.
+3. Each member's peak within ±400 ms of the hit, sub-frame with a parabola.
+4. Offset against the hit's moment as the *other* members give it, each corrected by their own
+   typical offset (a median polish), so "0 ms" is the median member as everywhere else.
+
+**The tie problem.** At this tempo an arm going up and the same arm coming back down 250 ms
+later are two speed peaks, both inside ±400 ms: half of all matches had a second peak nearly as
+high. Four ways to choose, checked quickly by planting shifts in real members' tracks (with the
+plain median of the others as the reference, before the fixes below):
+
+| how the member's peak is chosen | member-hits read | error | > 30 ms wrong |
+|---|---|---|---|
+| speed peak, ties skipped | 9% | 2 ms | 2% |
+| speed peak, movement direction must match at every hit | 16-24% | 6-11 ms | 1-8% |
+| motion projected onto the group's direction | 30-49% | 10-24 ms | 5-13% |
+| **speed peak, direction only breaks ties** | **26%** | **2 ms** | **1.5%** |
+
+Direction costs precision because the reference direction comes from the other members, so it
+moves when they do. Used only for ties, it tripled the readings without losing precision.
+
+**Two traps, both caught by tests:**
+- The median of the *other* members isn't the median member. With offsets 0, 40, -30, 90, 0 ms,
+  the -30 member's four others have median 20, so they read -50. Each member's typical offset
+  is now taken out first.
+- When the others split between two moves (two peaking on one, two on the next, 490 ms apart),
+  their median falls in between and every reading at that hit is nonsense. A hit's moment now
+  counts only if at least 3 of the others peak within 100 ms of it.
+
+**What the real clip says** (`syncscore shift-test`, 3 members × 3 planted shifts):
+- **Single hits:** each member's own peak moves correctly for 99% of plants, and the typical
+  error is about 3 ms. But rare pick flips (the neighbouring move, half a beat away) push the
+  mean to 22 ms, and 3% are more than 30 ms wrong.
+- **Sections from hits: 0%.** At the same hit, members' peaks spread with an IQR of 45-100 ms,
+  and a 32 s section holds only 0-8 matched hits per member. No interval gets under 50 ms.
+- **Windows or hits, whichever is more certain:** 24% of sections instead of 22%. That is one
+  member-section, within noise.
+- **Whole clip from hits:** 13-23 hits per member, but intervals 45-75 ms wide. Planted shifts
+  mostly came back short (by 13-25 ms at +133 ms), and planting a shift in one member moved others'
+  readings by up to ±30 ms.
+
+So the hits aren't cleaner than the grooving on this clip: the spread is in the dancing, at the
+big moments too. The hypothesis was wrong here, and the report stays on window sections.
+
+**Why keep the code, when Stage C deleted code that didn't matter?** This code *is* the
+measurement: `syncscore shift-test` reproduces every number above, and it is tested (sub-frame
+recovery, planted delays, the return-stroke tie, an unbreakable tie as "no reading", a hidden
+member). It changes no output. It might pay off on footage with sharper, sparser hits or a
+slower tempo, where ±400 ms holds only one move, and that is now cheap to check.
+
+**Why not show single hits as "worst moments"?** Because the largest per-hit offsets are
+exactly where pick flips live. A list of the worst hits would mostly show the neighbouring move.
