@@ -141,7 +141,8 @@ def fill_gaps(det, tracks, max_gap_s: float, min_keypoint_conf: float):
             used_members.add(i)
             used_rows.add(r)
             own = own_keypoints(det.xy[r], det.kconf[r], o_xy, o_conf, float(expected[i][3] - expected[i][1]), min_keypoint_conf)
-            out.xy[i, f], out.conf[i, f], out.box[i, f], out.hist[i, f] = det.xy[r], own, det.box[r], det.hist[r]
+            # No clothing colour: in a half-hidden box the torso is mostly the front dancer's.
+            out.xy[i, f], out.conf[i, f], out.box[i, f], out.hist[i, f] = det.xy[r], own, det.box[r], 0.0
             out.rows[i, f] = r
             filled += 1
     return out, filled

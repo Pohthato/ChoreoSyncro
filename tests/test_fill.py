@@ -187,3 +187,17 @@ def test_filled_frames_keep_only_the_members_own_joints():
     assert count == 6
     member = 0 if filled.fragments[0] == [1] else 1
     assert (filled.conf[member, 42, 13:] == 0).all() and (filled.conf[member, 42, :13] > 0).all()
+
+
+def test_filled_frames_have_no_clothing_colour():
+    # Under occlusion the torso in a filled box is mostly the front dancer's clothes, which
+    # would make the swap check see a colour change that isn't there.
+    det = _detections([
+        (1, [f for f in range(100) if not 40 <= f < 46], lambda f: 300, 0),
+        (7, range(40, 46), lambda f: 305, 3),
+        (2, range(100), lambda f: 900, 1),
+    ])
+    filled, _ = fill_gaps(det, _tracks(det, 2), max_gap_s=2.0, min_keypoint_conf=0.3)
+    member = 0 if filled.fragments[0] == [1] else 1
+    assert filled.hist[member, 40:46].sum() == 0
+    assert filled.hist[member, 39].sum() > 0
