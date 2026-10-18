@@ -388,3 +388,53 @@ slower tempo, where ±400 ms holds only one move, and that is now cheap to check
 
 **Why not show single hits as "worst moments"?** Because the largest per-hit offsets are
 exactly where pick flips live. A list of the worst hits would mostly show the neighbouring move.
+
+## Stage D: everyone tracked (`pose/coverage.py`, `pose/fill.py`, `pose/recover.py`)
+
+**Why:** with 7 dancers, the skeleton view often showed 6. Measured on the BTS clip, all 7
+members were tracked in only **46.5%** of frames. Everything downstream (timing, pose, the
+viewer still to come) can only be as complete as this.
+
+**Measure first.** A coverage report (`tracking_report.json` → `coverage`) splits each missing
+member-frame by cause. In **80%** the detector itself found fewer than 7 clear people: a dancer
+half hidden behind another. In **20%** it found them, but the member assignment left the piece
+out (shorter than 0.3 s, or no tracker ID). Most gaps were short: 266 of 339 under 0.5 s.
+
+**Two fixes, one rule.** Only a real detection may fill a gap; nothing is interpolated into the
+keypoints, because an invented pose would be scored as measured.
+1. **Unused detections:** inside a member's gap of at most 2 s, a detection no member uses,
+   near the position interpolated across the gap and of similar size, fills that frame.
+2. **A second look:** on just the frames still missing someone inside such a gap (1,583 of
+   6,905), the pose model runs again at a lower box threshold (0.05) and larger input (1280 px).
+   Its detections go through the same rule. Cached in `recovered.npz`.
+
+Gaps touching the start or end of the clip are never filled (nothing to anchor them), and one
+detection fills at most one member.
+
+**Found by looking.** The first version's recovered boxes were usually on the right person, the
+dancer half hidden behind another, but often with some joints on the front dancer's body. One
+was a thin slice of the dancer in front. Borrowed limbs would make the hidden member's timing
+partly the front dancer's. Now any joint lying on another present member's joint is dropped,
+and a candidate left with fewer than 6 joints of its own is rejected. In a fresh sample after
+the fix, every recovered box checked was the hidden dancer, with joints on their own body.
+
+**Result on the BTS clip:** all 7 tracked in **57.2%** of frames (was 46.5%); each member seen
+76-96% of the time (was 72-93%). 517 member-frames came from unused detections and 951 from the
+second look. Gaps of 0.5-2 s went from 47 to 12. The 26 gaps of 2 s or more are untouched by
+design.
+
+**What it did to timing** (planted shifts, same 3 members × 3 shifts): sections measured stayed
+at 22%, with the error at 11.5 ms (was 11.7) and still none more than 30 ms wrong, but the truth
+now lands inside the claimed 90% interval in **100%** of cases (was 83%). Single strict windows
+got more precise (5.7 ms, was 7.0). So more complete tracks didn't add section readings on this
+clip; they made the existing ones more trustworthy.
+
+**Suspected ID swaps went from 19 to 41, and that is mostly a measurement change.** The swap
+check compares clothing colour before and after each crossing. Filled boxes now sit exactly in
+the overlaps that used to be gaps, so the check sees crossings it couldn't see before: leaving
+the filled boxes out of the crossing check gives exactly the original 19, so all 22 new ones are
+at those crossings. A filled frame's colour is set to unknown, since in a half-hidden box the
+torso is mostly the front dancer's clothes. Filling can't
+create a lasting swap (a gap is only filled between the member's own sightings, at most 2 s
+apart), but the newly visible crossings can expose stitching errors that were hidden before.
+The true rate needs the hand audit (`syncscore audit`).

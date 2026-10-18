@@ -44,6 +44,7 @@ flowchart LR
 |---|---|---|
 | pose | Ultralytics **YOLO11-pose** (`yolo11s-pose.pt`, CPU) | one pass finds every person and their COCO-17 keypoints; ByteTrack is built in; same family as Optiqen's pose stage. RTMPose is somewhat more accurate in crowds but needs a separate detector and the MMCV stack. |
 | tracking | **ByteTrack**, then a stitching pass ([pose/tracks.py](syncscore/pose/tracks.py)) | rejoins members who come back with a new ID after an occlusion (by torso colour and position), drops non-members, flags crossings after which two tracks look like they swapped clothes. |
+| occlusion | short gaps (≤ 2 s) filled with **real detections only**: ones the stitching left unused, then a second, more sensitive pose pass on just the frames still missing someone ([pose/fill.py](syncscore/pose/fill.py), [pose/recover.py](syncscore/pose/recover.py)) | a half-hidden dancer is often missed by the detector. A filler must sit where the member should be, be their size, not be another member, and keep at least 6 joints of its own (joints lying on the front dancer's are dropped). |
 | smoothing | **One Euro filter**, run forward and backward and averaged ([pose/smooth.py](syncscore/pose/smooth.py)) | removes jitter while keeping fast hits (93% of peak speed). A causal filter added 67 ms of lag in tests, as big as the offsets being measured; the two-way average cancels it (< 1 ms). |
 | pose glitches | left/right swaps that **revert within 2 frames** are undone; bone turns faster than 1800°/s are marked unknown | on the real clip, 1% of frames carried ~90% of the shoulder and hip velocity energy, all glitches. A real turn crosses the arms and stays crossed, so it is never "repaired" (tested). |
 | comparable bodies | **bone direction unit vectors** ([features/bones.py](syncscore/features/bones.py)) | a unit vector has no position, scale or length, so a tall and a short member doing the same move are identical (tested to 1e-9). Optional **mirroring** (swap left/right, reflect x) for mirrored choreography: off, per member, or auto per window. |
@@ -169,9 +170,11 @@ Real accuracy is bounded by the pose model.
   separate real timing variation from styling.
 - **Tracking on the test clip:** ByteTrack gave 159 IDs for 7 people. The stitching first threw
   away 15% of the member detections (it treated long, badly colour-matched pieces as passers-by);
-  after the fix 96% are kept and every member is visible 72-93% of the time, from 99 rejoined
-  pieces. Identity errors at crossings are still possible: 19 suspected swaps, and the true rate
-  needs the hand audit.
+  after the fix 96% are kept, from 99 rejoined pieces. Filling occlusion gaps with real
+  detections raised the frames with all 7 members tracked from 46.5% to 57.2%, and every member
+  is visible 76-96% of the time. Gaps over 2 s are left empty. Identity errors at crossings are
+  still possible: 41 suspected swaps (19 before gap filling; all 22 new ones are at crossings the
+  check couldn't see while those frames were gaps), and the true rate needs the hand audit.
 - **Section intervals are slightly overconfident on real footage** (83% coverage for a claimed 90%).
 - Thresholds (35 ms "in sync", 135 ms "off", 15° "pose off") are choices, not standards.
 
