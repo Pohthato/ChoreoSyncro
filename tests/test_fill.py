@@ -85,3 +85,61 @@ def test_duplicate_of_the_occluder_is_rejected():
     assert cost == np.inf
     # The same box with its own skeleton is fine.
     assert np.isfinite(_accept(candidate, _box(540), (front[None], f_xy[None], f_conf[None])))
+
+
+# --- filling from detections the member assignment left unused ---
+
+from syncscore.pose.fill import fill_gaps  # noqa: E402
+from syncscore.pose.tracks import assemble, assign_members, build_tracklets  # noqa: E402
+from test_tracks import _detections  # noqa: E402
+
+
+def _tracks(det, members):
+    return assemble(det, assign_members(det, build_tracklets(det, min_frames=9), members=members, max_gap_s=2.0))
+
+
+def _seen(tracks):
+    return tracks.rows >= 0
+
+
+def test_leftover_detection_fills_a_short_gap():
+    det = _detections([
+        (1, [f for f in range(100) if not 40 <= f < 46], lambda f: 300, 0),
+        (7, range(40, 46), lambda f: 305, 0),  # 6 frames: too short to be a tracklet
+        (2, range(100), lambda f: 900, 1),
+    ])
+    tracks = _tracks(det, 2)
+    assert not _seen(tracks)[0, 40:46].any()
+    filled, count = fill_gaps(det, tracks, max_gap_s=2.0, min_keypoint_conf=0.3)
+    assert count == 6
+    assert _seen(filled)[0, 40:46].all()
+    assert all(det.track_id[filled.rows[0, f]] == 7 for f in range(40, 46))
+    assert np.isfinite(filled.xy[0, 42]).all()
+
+
+def test_one_detection_fills_one_member():
+    det = _detections([
+        (1, [f for f in range(100) if f != 50], lambda f: 300, 0),
+        (2, [f for f in range(100) if f != 50], lambda f: 420, 1),
+        (7, [50], lambda f: 310, 0),
+    ])
+    filled, count = fill_gaps(det, _tracks(det, 2), max_gap_s=2.0, min_keypoint_conf=0.3)
+    assert count == 1
+    assert _seen(filled)[0, 50] and not _seen(filled)[1, 50]
+
+
+def test_edge_gaps_are_not_filled():
+    det = _detections([(1, range(10, 100), lambda f: 300, 0), (7, range(0, 6), lambda f: 300, 0)])
+    filled, count = fill_gaps(det, _tracks(det, 1), max_gap_s=2.0, min_keypoint_conf=0.3)
+    assert count == 0 and not _seen(filled)[0, :10].any()
+
+
+def test_fill_off_changes_nothing():
+    det = _detections([
+        (1, [f for f in range(100) if not 40 <= f < 46], lambda f: 300, 0),
+        (7, range(40, 46), lambda f: 305, 0),
+    ])
+    tracks = _tracks(det, 1)
+    filled, count = fill_gaps(det, tracks, max_gap_s=0.0, min_keypoint_conf=0.3)
+    assert count == 0
+    assert np.array_equal(filled.rows, tracks.rows) and np.array_equal(filled.xy, tracks.xy, equal_nan=True)

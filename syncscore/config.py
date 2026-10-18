@@ -28,6 +28,7 @@ class TrackingConfig:
     members: int = 0
     stitch_max_gap_s: float = 2.0
     crossing_iou: float = 0.3
+    fill_max_gap_s: float = 2.0  # fill member gaps up to this long with real detections (0 = off)
 
 
 @dataclass

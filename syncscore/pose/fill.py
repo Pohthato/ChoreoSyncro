@@ -78,3 +78,45 @@ def accept(candidate_box: np.ndarray, candidate_xy: np.ndarray, candidate_conf: 
             if distance / height < DUPLICATE_PX:
                 return np.inf
     return float(jump + 0.5 * abs(np.log(ratio)))
+
+
+def fill_gaps(det, tracks, max_gap_s: float, min_keypoint_conf: float):
+    """Fill members' short gaps with detections no member uses. Returns (new tracks, frames filled).
+
+    Per frame, every (missing member, unused detection) pair is scored with `accept`, and pairs
+    are taken cheapest first, so one detection fills at most one member and each member gets
+    the detection nearest to where they should be.
+    """
+    from .tracks import MemberTracks
+
+    max_gap = int(round(max_gap_s * det.fps))
+    out = MemberTracks(tracks.xy.copy(), tracks.conf.copy(), tracks.box.copy(), tracks.hist.copy(),
+                       tracks.fragments, tracks.rows.copy())
+    if max_gap <= 0:
+        return out, 0
+    by_frame = np.split(np.argsort(det.frame, kind="stable"), np.cumsum(np.bincount(det.frame, minlength=det.n_frames))[:-1])
+    filled = 0
+    members = len(out.rows)
+    for f in np.flatnonzero((out.rows < 0).any(axis=0)):
+        missing = [i for i in range(members) if out.rows[i, f] < 0]
+        expected = {i: expected_box(tracks.box, i, f, max_gap) for i in missing}
+        missing = [i for i in missing if expected[i] is not None]
+        candidates = [r for r in by_frame[f] if r not in set(out.rows[:, f])]
+        if not missing or not candidates:
+            continue
+        present = [i for i in range(members) if out.rows[i, f] >= 0]
+        o_box, o_xy, o_conf = out.box[present, f], out.xy[present, f], out.conf[present, f]
+        pairs = sorted((accept(det.box[r], det.xy[r], det.kconf[r], expected[i], o_box, o_xy, o_conf, min_keypoint_conf), i, r)
+                       for i in missing for r in candidates)
+        used_members, used_rows = set(), set()
+        for cost, i, r in pairs:
+            if not np.isfinite(cost):
+                break
+            if i in used_members or r in used_rows:
+                continue
+            used_members.add(i)
+            used_rows.add(r)
+            out.xy[i, f], out.conf[i, f], out.box[i, f], out.hist[i, f] = det.xy[r], det.kconf[r], det.box[r], det.hist[r]
+            out.rows[i, f] = r
+            filled += 1
+    return out, filled
