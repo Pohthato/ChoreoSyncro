@@ -107,9 +107,10 @@ def accept(candidate_box: np.ndarray, candidate_xy: np.ndarray, candidate_conf: 
 def fill_gaps(det, tracks, max_gap_s: float, min_keypoint_conf: float):
     """Fill members' short gaps with detections no member uses. Returns (new tracks, frames filled).
 
-    Per frame, every (missing member, unused detection) pair is scored with `accept`, and pairs
-    are taken cheapest first, so one detection fills at most one member and each member gets
-    the detection nearest to where they should be.
+    Per frame, every (missing member, unused detection) pair is scored with `accept` and the
+    cheapest is filled; then the rest are scored again with that member now present. Scoring all
+    pairs once was not enough: the low re-detection threshold finds near-copies of one person
+    (boxes overlapping 0.4-0.7), and two missing members each took a copy of the same dancer.
     """
     from .tracks import MemberTracks
 
@@ -126,23 +127,18 @@ def fill_gaps(det, tracks, max_gap_s: float, min_keypoint_conf: float):
         expected = {i: expected_box(tracks.box, i, f, max_gap) for i in missing}
         missing = [i for i in missing if expected[i] is not None]
         candidates = [r for r in by_frame[f] if r not in set(out.rows[:, f])]
-        if not missing or not candidates:
-            continue
-        present = [i for i in range(members) if out.rows[i, f] >= 0]
-        o_box, o_xy, o_conf = out.box[present, f], out.xy[present, f], out.conf[present, f]
-        pairs = sorted((accept(det.box[r], det.xy[r], det.kconf[r], expected[i], o_box, o_xy, o_conf, min_keypoint_conf), i, r)
-                       for i in missing for r in candidates)
-        used_members, used_rows = set(), set()
-        for cost, i, r in pairs:
+        while missing and candidates:
+            present = [i for i in range(members) if out.rows[i, f] >= 0]
+            o_box, o_xy, o_conf = out.box[present, f], out.xy[present, f], out.conf[present, f]
+            cost, i, r = min((accept(det.box[r], det.xy[r], det.kconf[r], expected[i], o_box, o_xy, o_conf, min_keypoint_conf), i, r)
+                             for i in missing for r in candidates)
             if not np.isfinite(cost):
                 break
-            if i in used_members or r in used_rows:
-                continue
-            used_members.add(i)
-            used_rows.add(r)
             own = own_keypoints(det.xy[r], det.kconf[r], o_xy, o_conf, float(expected[i][3] - expected[i][1]), min_keypoint_conf)
             # No clothing colour: in a half-hidden box the torso is mostly the front dancer's.
             out.xy[i, f], out.conf[i, f], out.box[i, f], out.hist[i, f] = det.xy[r], own, det.box[r], 0.0
             out.rows[i, f] = r
+            missing.remove(i)
+            candidates.remove(r)
             filled += 1
     return out, filled

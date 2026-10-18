@@ -201,3 +201,19 @@ def test_filled_frames_have_no_clothing_colour():
     member = 0 if filled.fragments[0] == [1] else 1
     assert filled.hist[member, 40:46].sum() == 0
     assert filled.hist[member, 39].sum() > 0
+
+
+def test_two_members_never_get_the_same_person_in_one_frame():
+    # Two members missing in frame 50, and the low re-detection threshold found the same person
+    # twice: two boxes overlapping by IoU 0.6 with the same skeleton. Only one member may get them.
+    det = _detections([
+        (1, [f for f in range(100) if f != 50], lambda f: 300, 0),
+        (2, [f for f in range(100) if f != 50], lambda f: 360, 1),
+        (7, [50], lambda f: 320, 2),
+        (8, [50], lambda f: 340, 2),
+    ])
+    a, b = (int(np.flatnonzero(det.track_id == t)[0]) for t in (7, 8))
+    det.xy[b] = det.xy[a]
+    filled, count = fill_gaps(det, _tracks(det, 2), max_gap_s=2.0, min_keypoint_conf=0.3)
+    assert count == 1
+    assert _seen(filled)[:, 50].sum() == 1
