@@ -143,3 +143,47 @@ def test_fill_off_changes_nothing():
     filled, count = fill_gaps(det, tracks, max_gap_s=0.0, min_keypoint_conf=0.3)
     assert count == 0
     assert np.array_equal(filled.rows, tracks.rows) and np.array_equal(filled.xy, tracks.xy, equal_nan=True)
+
+
+# --- joints borrowed from the dancer in front ---
+
+from syncscore.pose.fill import own_keypoints  # noqa: E402
+
+
+def test_joints_on_another_members_joints_are_dropped():
+    front = _box(500)
+    f_xy, f_conf = _skeleton(front)
+    c_xy, c_conf = _skeleton(_box(560))
+    c_xy[9:] = f_xy[9:] + 2.0  # the lower body sits on the front dancer's joints
+    kept = own_keypoints(c_xy, c_conf, f_xy[None], f_conf[None], height=H, min_keypoint_conf=0.3)
+    assert (kept[:9] == c_conf[:9]).all()
+    assert (kept[9:] == 0).all()
+
+
+def test_a_candidate_with_too_few_joints_of_its_own_is_rejected():
+    # Only 8 confident joints, 3 of them on the front dancer's: too few borrowed for the
+    # whole-skeleton duplicate check, but just 5 of its own left.
+    front = _box(500)
+    f_xy, f_conf = _skeleton(front)
+    candidate = _box(560)
+    c_xy, c_conf = _skeleton(candidate)
+    c_conf[8:] = 0.05
+    c_xy[5:8] = f_xy[5:8] + 1.0
+    assert accept(candidate, c_xy, c_conf, _box(560), front[None], f_xy[None], f_conf[None], min_keypoint_conf=0.3) == np.inf
+    c_xy[5:8] = _skeleton(candidate)[0][5:8]  # the same candidate with all 8 of its own is fine
+    assert np.isfinite(accept(candidate, c_xy, c_conf, _box(560), front[None], f_xy[None], f_conf[None], min_keypoint_conf=0.3))
+
+
+def test_filled_frames_keep_only_the_members_own_joints():
+    det = _detections([
+        (1, [f for f in range(100) if not 40 <= f < 46], lambda f: 300, 0),
+        (7, range(40, 46), lambda f: 305, 0),
+        (2, range(100), lambda f: 360, 1),  # a second member standing close in front
+    ])
+    for r in np.flatnonzero(det.track_id == 7):  # the gap-filler's last 4 joints sit on member 2's
+        other = np.flatnonzero((det.track_id == 2) & (det.frame == det.frame[r]))[0]
+        det.xy[r, 13:] = det.xy[other, 13:] + 1.0
+    filled, count = fill_gaps(det, _tracks(det, 2), max_gap_s=2.0, min_keypoint_conf=0.3)
+    assert count == 6
+    member = 0 if filled.fragments[0] == [1] else 1
+    assert (filled.conf[member, 42, 13:] == 0).all() and (filled.conf[member, 42, :13] > 0).all()
