@@ -16,6 +16,9 @@ def _analyze(args: argparse.Namespace) -> int:
     from .outputs import write_outputs
     from .pipeline import analyze_keypoints
     from .pose.extract import extract
+    from .pose.coverage import coverage
+    from .pose.fill import fill_gaps
+    from .pose.recover import frames_to_recover, merge, redetect
     from .pose.tracks import Detections, assemble, assign_members, build_tracklets, count_members, suspected_swaps
     from .pose.video import probe, resample_uniform
     from .viz.smoothing_plot import render_smoothing_plot
@@ -43,6 +46,20 @@ def _analyze(args: argparse.Namespace) -> int:
         return 3
     tracklets = build_tracklets(det, min_frames=max(3, int(0.3 * info.fps)))
     tracks = assemble(det, assign_members(det, tracklets, members, config.tracking.stitch_max_gap_s))
+    # Occlusion: fill members' short gaps with real detections, first ones the assignment left
+    # unused, then from a more sensitive second look at just the frames still missing someone.
+    before = coverage(det, tracks, min_conf)
+    tracks, from_leftovers = fill_gaps(det, tracks, config.tracking.fill_max_gap_s, min_conf)
+    from_redetection = 0
+    if config.tracking.recover:
+        frames = frames_to_recover(tracks, info.fps, config.tracking.fill_max_gap_s)
+        cache = out / "recovered.npz"
+        if args.redo_pose:
+            cache.unlink(missing_ok=True)
+        if len(frames):
+            det = merge(det, redetect(video, frames, config, cache, info.size, info.fps, det.n_frames))
+            tracks, from_redetection = fill_gaps(det, tracks, config.tracking.fill_max_gap_s, min_conf)
+    after = coverage(det, tracks, min_conf)
     swaps = suspected_swaps(tracks.hist, tracks.box, info.fps, config.tracking.crossing_iou)
     names = [f"M{i + 1}" for i in range(len(tracks.xy))]
     np.savez_compressed(out / "keypoints_raw.npz", xy=tracks.xy.astype(np.float32), conf=tracks.conf.astype(np.float32),
@@ -63,6 +80,7 @@ def _analyze(args: argparse.Namespace) -> int:
         "note": "Suspected swaps come from clothing colour at crossings and miss swaps between members in matching outfits. "
                 "The true rate comes from `syncscore audit` (hand-labelled frames).",
         "variable_frame_rate_resampled": info.variable,
+        "coverage": {"before": before, "after": after, "filled_from_leftovers": from_leftovers, "filled_from_redetection": from_redetection},
     }
     (out / "tracking_report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
     write_outputs(result, xy_s, conf_s, out, config, info.size, gif_seconds=8.0)
@@ -70,6 +88,8 @@ def _analyze(args: argparse.Namespace) -> int:
     raw = np.where((conf[best, :, 9] >= min_conf)[:, None], xy[best, :, 9], np.nan)
     render_smoothing_plot(raw, xy_s[best, :, 9], fps, out / "smoothing_example.png", f"{names[best]} left wrist: raw vs smoothed")
     print(f"  {len(names)} members, {report['rejoins']} broken tracks rejoined, {len(swaps)} suspected ID swaps")
+    print(f"  everyone tracked in {after['all_members_share']:.1%} of frames (was {before['all_members_share']:.1%}); "
+          f"filled {from_leftovers} member-frames from unused detections, {from_redetection} from re-detection")
     print(f"results in {out}")
     return 0
 
