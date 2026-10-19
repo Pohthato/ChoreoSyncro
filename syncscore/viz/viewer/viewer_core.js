@@ -116,6 +116,10 @@
     return { x: x0 - margin, y: y0 - margin, w: x1 - x0 + 2 * margin, h: y1 - y0 + 2 * margin, seen: true };
   }
 
+  function trackTime(clientX, left, width, durationS) {
+    return Math.min(Math.max((clientX - left) / width, 0), 1) * durationS;
+  }
+
   // The box around a member at `frame`, or if unseen there, at the nearest frame within `reach`
   // where they were seen (marked seen: false). `frameAt(f)` returns { points, conf }.
   function nearestBox(frameAt, frame, nFrames, minConf, pad, reach) {
@@ -165,7 +169,7 @@
 
   const SyncCore = {
     BONES, TORSO_SIDES, COLORS, decodeInt16, decodeUint8, decodeUint16, frameAt, sectionAt, signedMs, statusOf,
-    pointsAt, confAt, skeletonSegments, followBox, nearestBox, lineupTransform, wrapLoop, advanceClock,
+    pointsAt, confAt, skeletonSegments, followBox, nearestBox, trackTime, lineupTransform, wrapLoop, advanceClock,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = SyncCore;
   else root.SyncCore = SyncCore;

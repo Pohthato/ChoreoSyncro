@@ -278,15 +278,17 @@
       const range = `${clockText(sec.start_s)}-${clockText(sec.end_s)}`;
       tape.title = `${name}, ${range}: ${s.text}`;
       tape.setAttribute("aria-label", tape.title);
+      // A click lands where it was aimed; Enter or Space on a strip (no pointer) goes to the section's start.
       tape.addEventListener("click", (e) => {
         e.stopPropagation();
-        seek(sec.start_s);
+        if (e.detail === 0) seek(sec.start_s);
+        else seek(C.trackTime(e.clientX, track.getBoundingClientRect().left, track.getBoundingClientRect().width, DURATION));
       });
       track.appendChild(tape);
     });
     track.addEventListener("click", (e) => {
       const r = track.getBoundingClientRect();
-      seek(((e.clientX - r.left) / r.width) * DURATION);
+      seek(C.trackTime(e.clientX, r.left, r.width, DURATION));
     });
     timeline.appendChild(row);
     return row;

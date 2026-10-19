@@ -127,3 +127,9 @@ test("nearestBox frames a member from the nearest frame they were seen", () => {
   assert.equal(core.nearestBox(frame, 5, 40, 0.3, 0.25, 3), null); // nothing within reach
   assert.equal(core.nearestBox(frame, 12, 40, 0.3, 0.25, 3).seen, true);
 });
+
+test("trackTime turns a click on the timeline into the time under it", () => {
+  assert.equal(core.trackTime(150, 100, 400, 230), 230 * 50 / 400);
+  assert.equal(core.trackTime(50, 100, 400, 230), 0);
+  assert.equal(core.trackTime(900, 100, 400, 230), 230);
+});
