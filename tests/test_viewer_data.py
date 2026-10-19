@@ -113,3 +113,20 @@ def test_page_reads_only_keys_the_data_has(results, tmp_path):
     assert scripts == ["viewer_data.js", "viewer_core.js", "viewer.js"] and sheets == ["viewer.css"]
     assert all((page / name).is_file() for name in scripts + sheets)
     assert not re.search(r'(src|href)="(https?:)?//', html), "the page must not load anything from the network"
+
+
+def test_view_command_writes_a_viewer(results, tmp_path):
+    import cv2
+
+    from syncscore.cli import main
+
+    out, _, _ = results
+    video = tmp_path / "practice clip.mp4"
+    writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (64, 48))
+    for k in range(60):
+        writer.write(np.full((48, 64, 3), k * 4, dtype=np.uint8))
+    writer.release()
+    assert main(["view", str(video), "--results", str(out)]) == 0
+    page = out / "viewer"
+    assert (page / "index.html").is_file()
+    assert video_url(video) in (page / "viewer_data.js").read_text(encoding="utf-8")

@@ -171,6 +171,25 @@ def _shift_test(args: argparse.Namespace) -> int:
     return 0
 
 
+def _view(args: argparse.Namespace) -> int:
+    """Write the viewer for an analysed video: open index.html in any browser, no server needed."""
+    from .pose.video import probe
+    from .viz.viewer_data import write_viewer
+
+    config = load_config(args.config)
+    video, results = Path(args.video), Path(args.results)
+    if not video.is_file():
+        print(f"Video not found: {video}", file=sys.stderr)
+        return 2
+    if not (results / "sync_result.npz").is_file():
+        print(f"No analysis in {results}: run `syncscore analyze` first.", file=sys.stderr)
+        return 2
+    index = write_viewer(results, Path(args.out) if args.out else results / "viewer", config, probe(video).size, video)
+    print(f"open {index}")
+    print("The viewer plays the video from where it is now and never copies it. It stays out of the repository.")
+    return 0
+
+
 def _validate(args: argparse.Namespace) -> int:
     from .synth.benchmark import run_benchmark
 
@@ -208,7 +227,11 @@ def _demo(args: argparse.Namespace) -> int:
 
     raw = np.where((group.conf[0, :, 9] >= config.pose.min_keypoint_conf)[:, None], group.keypoints[0, :, 9], np.nan)
     render_smoothing_plot(raw, xy[0, :, 9], group.fps, Path(args.out) / "smoothing_example.png", "M1 left wrist (synthetic, 1% noise): raw vs smoothed")
+    from .viz.viewer_data import write_viewer
+
+    index = write_viewer(Path(args.out), Path(args.out) / "viewer", config, spec.image_size, None)
     print(f"demo written to {args.out} (truth: M2 0 -> +120 ms after 16 s, M3 -33 ms, M4 +67 ms, M5 left elbow +25 deg 6-14 s)")
+    print(f"open {index} to see it (skeletons only: a synthetic group has no video)")
     return 0
 
 
@@ -250,6 +273,12 @@ def main(argv: list[str] | None = None) -> int:
     audit_score = commands.add_parser("audit-score", help="Score a filled-in audit CSV")
     audit_score.add_argument("csv")
     audit_score.set_defaults(run=_audit_score)
+
+    view = commands.add_parser("view", help="Write a viewer (open index.html in a browser): skeletons and ghosts on the video")
+    view.add_argument("video")
+    view.add_argument("--results", default="results", help="the folder `analyze` wrote")
+    view.add_argument("--out", default=None, help="where to write the viewer (default: <results>/viewer)")
+    view.set_defaults(run=_view)
 
     shift = commands.add_parser("shift-test", help="Plant known delays in real tracks from `analyze` and check they are recovered")
     shift.add_argument("--results", default="results")
