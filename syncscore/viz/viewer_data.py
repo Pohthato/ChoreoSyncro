@@ -81,7 +81,7 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
         "version": 1, "fps": float(kp["fps"]), "n_frames": int(n_frames), "image_size": [int(v) for v in image_size],
         "names": [str(n) for n in kp["names"]],
         "in_sync_ms": config.render.in_sync_ms, "off_sync_ms": config.render.off_sync_ms,
-        "shape_threshold_deg": config.sync.shape_threshold_deg, "video": video,
+        "shape_threshold_deg": config.sync.shape_threshold_deg, "min_keypoint_conf": config.pose.min_keypoint_conf, "video": video,
         "sections": [{"name": s["name"], "start_s": s["start_s"], "end_s": s["end_s"]} for s in summary["sections"]],
         "section_status": status,
         "keypoints": encode_int16(xy), "ghost": encode_int16(ghost),

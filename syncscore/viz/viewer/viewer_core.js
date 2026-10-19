@@ -132,9 +132,26 @@
     return { scale, dx: slotX - scale * feet[0], dy: floorY - scale * feet[1] };
   }
 
+  // Playback. A frame's timestamp can come before the clock started, and a hidden tab gets no
+  // frames for a while, so a step is never negative and never more than a quarter second.
+  const MAX_STEP_S = 0.25;
+
+  function wrapLoop(timeS, loop) {
+    if (!loop) return null;
+    return timeS >= loop[1] || timeS < loop[0] - 0.05 ? loop[0] : null;
+  }
+
+  function advanceClock(timeS, dtS, speed, loop, durationS, fps) {
+    let t = timeS + Math.min(Math.max(dtS, 0), MAX_STEP_S) * speed;
+    const wrapped = wrapLoop(t, loop);
+    if (wrapped !== null) t = wrapped;
+    const last = durationS - 1 / fps;
+    return t >= last ? { time: last, ended: true } : { time: t, ended: false };
+  }
+
   const SyncCore = {
     BONES, TORSO_SIDES, COLORS, decodeInt16, decodeUint8, decodeUint16, frameAt, sectionAt, signedMs, statusOf,
-    pointsAt, confAt, skeletonSegments, followBox, lineupTransform,
+    pointsAt, confAt, skeletonSegments, followBox, lineupTransform, wrapLoop, advanceClock,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = SyncCore;
   else root.SyncCore = SyncCore;

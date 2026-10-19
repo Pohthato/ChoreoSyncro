@@ -96,3 +96,20 @@ def test_data_size_for_a_full_clip():
     size += len(base64.b64encode(rng.integers(0, 256, size=shape[:3], dtype=np.uint8).tobytes()))
     size += len(base64.b64encode(rng.integers(0, 2**13, size=shape[:2], dtype="<u2").tobytes()))
     assert size < 15e6
+
+
+def test_page_reads_only_keys_the_data_has(results, tmp_path):
+    import re
+
+    out, config, spec = results
+    index = write_viewer(out, tmp_path / "viewer", config, spec.image_size, None)
+    page = index.parent
+    used = set(re.findall(r"\bD\.(\w+)", (page / "viewer.js").read_text(encoding="utf-8")))
+    assert used, "viewer.js should read the data through D"
+    assert used <= set(viewer_data(out, config, spec.image_size, None))
+    html = index.read_text(encoding="utf-8")
+    scripts = re.findall(r'<script src="([^"]+)"', html)
+    sheets = re.findall(r'<link rel="stylesheet" href="([^"]+)"', html)
+    assert scripts == ["viewer_data.js", "viewer_core.js", "viewer.js"] and sheets == ["viewer.css"]
+    assert all((page / name).is_file() for name in scripts + sheets)
+    assert not re.search(r'(src|href)="(https?:)?//', html), "the page must not load anything from the network"

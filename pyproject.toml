@@ -26,5 +26,8 @@ syncscore = "syncscore.cli:main"
 [tool.setuptools.packages.find]
 include = ["syncscore*"]
 
+[tool.setuptools.package-data]
+syncscore = ["viz/viewer/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]

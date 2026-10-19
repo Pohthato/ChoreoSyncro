@@ -1,0 +1,139 @@
+/* SyncScore viewer. One quiet page around a dark stage; the timeline reads like spike tape on a
+   practice-room floor. Status colours are reserved for status and always come with words. */
+:root {
+  --wall: #eceef0;
+  --wall-2: #e0e3e7;
+  --ink: #16181b;
+  --ink-2: #4c525a;
+  --muted: #8a9098;
+  --stage: #1a1a19;
+  --cue: #2a78d6;
+  --good: #0ca30c;
+  --warning: #fab219;
+  --critical: #d03b3b;
+  --none: #898781;
+  --halo: #e87ba4;
+  --font: "Bahnschrift", "DIN Alternate", "Segoe UI", system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--wall);
+  color: var(--ink);
+  font: 15px/1.45 var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+button, select, output { font: inherit; color: inherit; }
+
+button {
+  border: 1px solid #c5cad1;
+  background: #f7f8f9;
+  border-radius: 4px;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+button:hover { background: #fff; }
+button[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: #fff; }
+button:focus-visible, select:focus-visible, .tape:focus-visible, .moments button:focus-visible {
+  outline: 3px solid var(--cue);
+  outline-offset: 2px;
+}
+
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px 24px;
+  padding: 14px 20px 10px;
+}
+.bar h1 { margin: 0; font-size: 22px; font-weight: 700; font-stretch: condensed; letter-spacing: 0.01em; }
+.views { display: flex; align-items: center; gap: 6px; }
+.member-pick { display: flex; align-items: center; gap: 6px; margin-left: 10px; color: var(--ink-2); }
+.member-pick select { padding: 4px 6px; border: 1px solid #c5cad1; border-radius: 4px; background: #fff; }
+.sign { margin: 0 0 0 auto; color: var(--ink-2); }
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-areas: "stage side" "timeline timeline";
+  gap: 14px 18px;
+  padding: 0 20px 24px;
+}
+.stage-wrap { grid-area: stage; min-width: 0; }
+.side { grid-area: side; }
+.timeline-wrap { grid-area: timeline; }
+
+.stage {
+  position: relative;
+  background: var(--stage);
+  aspect-ratio: 16 / 9;
+  border-radius: 6px;
+  overflow: hidden;
+}
+/* The video is drawn onto the canvas, so dancer view can crop it; the element itself stays out of sight. */
+.stage video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.note {
+  position: absolute; left: 12px; bottom: 12px; margin: 0; max-width: calc(100% - 24px);
+  padding: 6px 10px; border-radius: 4px; background: rgba(0, 0, 0, 0.65); color: #fff;
+}
+
+.controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 0 0; }
+.speeds, .toggles { display: inline-flex; gap: 4px; }
+.clock { margin-left: auto; color: var(--ink-2); }
+
+.lineup { display: block; width: 100%; height: 220px; margin-top: 10px; background: var(--stage); border-radius: 6px; }
+[hidden] { display: none !important; }
+
+.side h2 { margin: 2px 0 8px; font-size: 17px; font-weight: 600; }
+.side h3 { margin: 16px 0 6px; font-size: 14px; font-weight: 600; color: var(--ink-2); }
+.now { list-style: none; margin: 0; padding: 0; }
+.now li { margin: 0; }
+.now button {
+  display: flex; width: 100%; justify-content: space-between; gap: 10px;
+  border: 0; border-bottom: 1px solid var(--wall-2); border-radius: 0; background: none; padding: 6px 2px; text-align: left;
+}
+.now button:hover { background: #f6f7f8; }
+.status { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-2); }
+.dancer-now { margin: 0; color: var(--ink-2); }
+.moments { margin: 0; padding: 0; list-style: none; }
+.moments li { margin: 0; }
+.moments button {
+  width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--wall-2); border-radius: 0; background: none; padding: 5px 2px;
+}
+.moments button:hover { background: #f6f7f8; }
+.moments .empty { color: var(--muted); padding: 4px 2px; }
+.moments small { display: block; color: var(--muted); }
+
+.chip {
+  display: inline-block; width: 11px; height: 11px; border-radius: 2px; background: var(--c, var(--none)); flex: none;
+}
+.chip.halo { background: var(--halo); }
+.chip.ghost { background: transparent; border: 1.5px solid #b9bdc3; }
+
+.legend { margin: 20px 0 0; display: grid; gap: 6px; font-size: 13.5px; }
+.legend div { display: grid; grid-template-columns: 100px 1fr; gap: 8px; }
+.legend dt { display: flex; align-items: center; gap: 7px; font-weight: 600; }
+.legend dd { margin: 0; color: var(--ink-2); }
+
+/* Spike tape: one row per member, one strip per section, cut with a small gap. */
+.timeline { position: relative; display: grid; gap: 5px; padding-top: 4px; }
+.row { display: grid; grid-template-columns: 46px 1fr; align-items: center; gap: 8px; }
+.row .name { color: var(--ink-2); }
+.track { position: relative; height: 18px; cursor: pointer; }
+.tape {
+  position: absolute; top: 0; bottom: 0; border: 0; padding: 0; border-radius: 2px;
+  background: var(--c, var(--none));
+}
+.tape.none { background: repeating-linear-gradient(135deg, #cfd3d8 0 4px, #dfe2e6 4px 8px); }
+.cursor { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--cue); pointer-events: none; }
+.selected .name { color: var(--ink); font-weight: 700; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "stage" "timeline" "side"; padding: 0 12px 20px; }
+  .bar { padding: 12px; }
+  .sign { margin-left: 0; }
+}

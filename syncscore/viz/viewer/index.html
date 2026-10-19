@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SyncScore viewer</title>
+  <link rel="stylesheet" href="viewer.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>SyncScore</h1>
+    <div class="views" role="group" aria-label="View">
+      <button id="view-group" type="button" aria-pressed="true">Whole group</button>
+      <button id="view-dancer" type="button" aria-pressed="false">One dancer</button>
+      <label class="member-pick">Dancer
+        <select id="member"></select>
+      </label>
+    </div>
+    <p class="sign">+ ms = behind the group, − = ahead</p>
+  </header>
+
+  <main class="layout">
+    <section class="stage-wrap" aria-label="Video with skeletons">
+      <div class="stage" id="stage">
+        <video id="video" muted playsinline preload="auto"></video>
+        <canvas id="canvas"></canvas>
+        <p class="note" id="note" hidden></p>
+      </div>
+      <div class="controls" role="toolbar" aria-label="Playback">
+        <button id="play" type="button">Play</button>
+        <button id="back" type="button" aria-label="Back one frame">−1 frame</button>
+        <button id="forward" type="button" aria-label="Forward one frame">+1 frame</button>
+        <span class="speeds" role="group" aria-label="Speed">
+          <button type="button" data-speed="1" aria-pressed="true">1×</button>
+          <button type="button" data-speed="0.5" aria-pressed="false">½×</button>
+          <button type="button" data-speed="0.25" aria-pressed="false">¼×</button>
+        </span>
+        <button id="loop" type="button" aria-pressed="false">Loop 2 s</button>
+        <span class="toggles" role="group" aria-label="Show">
+          <button id="show-video" type="button" aria-pressed="true">Video</button>
+          <button id="show-ghost" type="button" aria-pressed="true">Ghost</button>
+          <button id="show-lineup" type="button" aria-pressed="false">Lineup</button>
+        </span>
+        <output id="clock" class="clock">0:00.00</output>
+      </div>
+      <canvas id="lineup" class="lineup" hidden></canvas>
+    </section>
+
+    <aside class="side" aria-label="Details">
+      <div id="side-group">
+        <h2>Right now</h2>
+        <ul id="now" class="now"></ul>
+      </div>
+      <div id="side-dancer" hidden>
+        <h2 id="dancer-name"></h2>
+        <p id="dancer-now" class="dancer-now"></p>
+        <h3>Timing moments</h3>
+        <ol id="timing-moments" class="moments"></ol>
+        <h3>Pose moments</h3>
+        <ol id="shape-moments" class="moments"></ol>
+      </div>
+      <dl class="legend">
+        <div><dt><span class="chip" style="--c:#0ca30c"></span>In sync</dt><dd id="legend-in"></dd></div>
+        <div><dt><span class="chip" style="--c:#fab219"></span>Drifting</dt><dd>between the two</dd></div>
+        <div><dt><span class="chip" style="--c:#d03b3b"></span>Off</dt><dd id="legend-off"></dd></div>
+        <div><dt><span class="chip" style="--c:#898781"></span>No reading</dt><dd>not enough evidence in this section</dd></div>
+        <div><dt><span class="chip halo"></span>Pink limb</dt><dd id="legend-halo"></dd></div>
+        <div><dt><span class="chip ghost"></span>Ghost</dt><dd>what the other members are doing at this moment</dd></div>
+      </dl>
+    </aside>
+
+    <section class="timeline-wrap" aria-label="Timing by section">
+      <div id="timeline" class="timeline"></div>
+    </section>
+  </main>
+
+  <script src="viewer_data.js"></script>
+  <script src="viewer_core.js"></script>
+  <script src="viewer.js"></script>
+</body>
+</html>

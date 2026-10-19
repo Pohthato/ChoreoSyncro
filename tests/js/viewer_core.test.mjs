@@ -92,3 +92,28 @@ test("pointsAt reads one member's frame from the flat array", () => {
   flat[((1 * nFrames + 1) * 17 + 9) * 2] = 42; // member 1, frame 1, joint 9, x
   assert.equal(core.pointsAt(flat, nFrames, 1, 1)[9][0], 42);
 });
+
+test("advanceClock moves at the playback speed", () => {
+  assert.equal(core.advanceClock(6.3, 0.1, 0.25, null, 32, 30).time, 6.3 + 0.025);
+  assert.equal(core.advanceClock(6.3, 0.1, 1, null, 32, 30).ended, false);
+});
+
+test("advanceClock never steps backwards or jumps", () => {
+  assert.equal(core.advanceClock(6.3, -0.02, 1, null, 32, 30).time, 6.3);
+  assert.equal(core.advanceClock(6.3, 5, 1, null, 32, 30).time, 6.3 + 0.25); // a hidden tab came back
+});
+
+test("advanceClock wraps inside the loop", () => {
+  const loop = [5.3, 7.3];
+  assert.equal(core.advanceClock(7.25, 0.1, 1, loop, 32, 30).time, 5.3);
+  assert.ok(Math.abs(core.advanceClock(6.0, 0.1, 1, loop, 32, 30).time - 6.1) < 1e-12);
+  assert.equal(core.wrapLoop(4.0, loop), 5.3); // seeked before the loop
+  assert.equal(core.wrapLoop(6.0, loop), null);
+  assert.equal(core.wrapLoop(6.0, null), null);
+});
+
+test("advanceClock stops at the end", () => {
+  const r = core.advanceClock(31.99, 0.1, 1, null, 32, 30);
+  assert.equal(r.ended, true);
+  assert.ok(r.time < 32);
+});
