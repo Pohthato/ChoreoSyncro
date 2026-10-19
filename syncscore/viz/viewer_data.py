@@ -1,0 +1,105 @@
+"""Everything the viewer page draws, computed here and written to one script file.
+
+The page (syncscore/viz/viewer/) does no analysis: skeletons, ghosts, halos and section status
+all come from the analysis outputs (`keypoints_smoothed.npz`, `sync_result.npz`,
+`summary.json`), so the page shows exactly what the report says. The data is written as
+`window.SYNCSCORE = {...};` so the page opens straight from disk (`file://`), where browsers
+won't let a page fetch a JSON file next to it.
+
+Large arrays are base64: keypoints as little-endian int16 in quarter pixels (NaN = -32768),
+confidences as uint8, halos as a uint16 bit per bone. A 7-member, 3:50 clip is about 10 MB.
+
+No pixels are stored. The video is referenced by its local path and never copied.
+"""
+from __future__ import annotations
+
+import base64
+import json
+import shutil
+from pathlib import Path
+
+import numpy as np
+
+from ..config import Config
+from ..features.bones import BONE_NAMES, mirror_name
+from ..sync.consensus import nanmedian_first_axis
+from .ghost import ghost_keypoints
+
+VIEWER_DIR = Path(__file__).resolve().parent / "viewer"
+_MISSING = -32768
+_FLIP_BONE = np.array([BONE_NAMES.index(mirror_name(n)) for n in BONE_NAMES])
+
+
+def encode_int16(values: np.ndarray, scale: float = 4.0) -> str:
+    scaled = np.clip(np.nan_to_num(values * scale, nan=0.0), -32767, 32767)
+    packed = np.where(np.isfinite(values), np.round(scaled), _MISSING).astype("<i2")
+    return base64.b64encode(packed.tobytes()).decode("ascii")
+
+
+def decode_int16(text: str, shape: tuple, scale: float = 4.0) -> np.ndarray:
+    raw = np.frombuffer(base64.b64decode(text), dtype="<i2").reshape(shape)
+    return np.where(raw == _MISSING, np.nan, raw / scale)
+
+
+def _b64(array: np.ndarray) -> str:
+    return base64.b64encode(np.ascontiguousarray(array).tobytes()).decode("ascii")
+
+
+def video_url(path: Path) -> str:
+    """Absolute file:/// URL of a local video, percent-encoded (spaces, non-Latin titles)."""
+    return Path(path).resolve().as_uri()
+
+
+def _per_frame_mirrored(sync: dict, n_frames: int) -> np.ndarray:
+    centers = sync["window_centers_s"] * float(sync["fps"])
+    nearest = np.abs(np.arange(n_frames)[:, None] - centers[None, :]).argmin(axis=1)
+    return sync["mirrored"][:, nearest].astype(bool)
+
+
+def _halo(bone_deg: np.ndarray, mirrored: np.ndarray, threshold: float) -> np.ndarray:
+    """(M, T) uint16: bit b set where bone b is more than `threshold` beyond the group's typical
+    error at that frame, on the member's own limb (a mirrored member's bones are compared flipped)."""
+    excess = bone_deg - nanmedian_first_axis(bone_deg)[None]
+    excess = np.where(mirrored[..., None], excess[..., _FLIP_BONE], excess)
+    over = np.nan_to_num(excess, nan=-np.inf) > threshold
+    return (over * (1 << np.arange(len(BONE_NAMES)))).sum(axis=-1).astype("<u2")
+
+
+def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], video: str | None) -> dict:
+    result_dir = Path(result_dir)
+    kp = np.load(result_dir / "keypoints_smoothed.npz")
+    sync = dict(np.load(result_dir / "sync_result.npz"))
+    summary = json.loads((result_dir / "summary.json").read_text(encoding="utf-8"))
+    xy, conf = kp["xy"].astype(float), kp["conf"].astype(float)
+    members, n_frames = xy.shape[:2]
+    mirrored = _per_frame_mirrored(sync, n_frames)
+    ghost = ghost_keypoints(xy, conf, mirrored, config.pose.min_keypoint_conf)
+    status = [[{"offset_ms": s["section_offset_ms"],
+                "low_ms": (s["section_interval_ms"] or [None, None])[0], "high_ms": (s["section_interval_ms"] or [None, None])[1],
+                "reliable": bool(s["section_reliable"])} for s in m["sections"]] for m in summary["members"]]
+    return {
+        "version": 1, "fps": float(kp["fps"]), "n_frames": int(n_frames), "image_size": [int(v) for v in image_size],
+        "names": [str(n) for n in kp["names"]],
+        "in_sync_ms": config.render.in_sync_ms, "off_sync_ms": config.render.off_sync_ms,
+        "shape_threshold_deg": config.sync.shape_threshold_deg, "video": video,
+        "sections": [{"name": s["name"], "start_s": s["start_s"], "end_s": s["end_s"]} for s in summary["sections"]],
+        "section_status": status,
+        "keypoints": encode_int16(xy), "ghost": encode_int16(ghost),
+        "conf": _b64(np.clip(np.round(conf * 255), 0, 255).astype(np.uint8)),
+        "halo": _b64(_halo(sync["bone_shape_deg"], mirrored, config.sync.shape_threshold_deg)),
+        "moments": [{"worst_timing_moments": m["overall"]["worst_timing_moments"],
+                     "worst_shape_moments": m["overall"]["worst_shape_moments"]} for m in summary["members"]],
+    }
+
+
+def write_viewer(result_dir: Path, out_dir: Path, config: Config, image_size: tuple[int, int], video: Path | None) -> Path:
+    """Write the viewer folder: the data script plus the page files. Returns index.html's path."""
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    data = viewer_data(result_dir, config, image_size, video_url(video) if video else None)
+    (out_dir / "viewer_data.js").write_text("window.SYNCSCORE = " + json.dumps(data, separators=(",", ":")) + ";\n", encoding="utf-8")
+    if VIEWER_DIR.is_dir():
+        for path in VIEWER_DIR.iterdir():
+            if path.is_file():
+                shutil.copy2(path, out_dir / path.name)
+    return out_dir / "index.html"
