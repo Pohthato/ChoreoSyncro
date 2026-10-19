@@ -23,6 +23,7 @@ import numpy as np
 from ..config import Config
 from ..features.bones import BONE_NAMES, mirror_name
 from ..sync.consensus import nanmedian_first_axis
+from ..sync.summary import LABEL_SWAP_DEG
 from .ghost import ghost_keypoints
 
 VIEWER_DIR = Path(__file__).resolve().parent / "viewer"
@@ -75,6 +76,37 @@ def _halo(bone_deg: np.ndarray, mirrored: np.ndarray, threshold: float) -> np.nd
     return (over * (1 << np.arange(len(BONE_NAMES)))).sum(axis=-1).astype("<u2")
 
 
+def pose_moments(bone_deg: np.ndarray, mirrored: np.ndarray, fps: float, threshold: float, count: int = 3) -> list[dict]:
+    """Per member: the worst moments where a bone is more than `threshold` beyond the group's
+    typical error (one per second), and how many seconds were left out as likely label swaps.
+
+    The report keeps bone errors of 150 degrees or more in its list, flagged. On real footage those
+    crowd out everything else (on the BTS clip every member's top three were hips or shoulders
+    turned around: the pose model swapping left and right, or a dancer facing away), so a dancer's
+    "what to fix" list would be all tracking glitches. Here they are counted, not listed."""
+    excess = bone_deg - nanmedian_first_axis(bone_deg)[None]
+    swap = np.nan_to_num(bone_deg) >= LABEL_SWAP_DEG
+    out = []
+    for i in range(len(bone_deg)):
+        usable = np.where(swap[i], np.nan, excess[i])
+        worst = np.nanmax(np.nan_to_num(usable, nan=-np.inf), axis=1)
+        moments, taken = [], []
+        for f in np.argsort(-worst):
+            if worst[f] < threshold or len(moments) == count:
+                break
+            if any(abs(f - t) < fps for t in taken):
+                continue
+            taken.append(f)
+            b = int(np.argmax(np.nan_to_num(usable[f], nan=-np.inf)))
+            name = mirror_name(BONE_NAMES[b]) if mirrored[i, f] else BONE_NAMES[b]
+            moments.append({"time_s": round(float(f / fps), 2), "bone": name, "error_deg": round(float(bone_deg[i, f, b]), 1),
+                            "above_group_deg": round(float(worst[f]), 1)})
+        swap_frames = np.flatnonzero((swap[i] & (np.nan_to_num(excess[i]) > threshold)).any(axis=1))
+        seconds = len(np.unique(np.floor(swap_frames / fps)))
+        out.append({"worst_shape_moments": moments, "likely_label_swaps": int(seconds)})
+    return out
+
+
 def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], video: str | None) -> dict:
     result_dir = Path(result_dir)
     kp = np.load(result_dir / "keypoints_smoothed.npz")
@@ -99,8 +131,8 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
         # Every drawn joint is at least 1/255, every undrawn one exactly 0: the page draws conf > 0.
         "conf": _b64(np.where(conf > 0, np.clip(np.round(conf * 255), 1, 255), 0).astype(np.uint8)),
         "halo": _b64(_halo(sync["bone_shape_deg"], mirrored, config.sync.shape_threshold_deg)),
-        "moments": [{"worst_timing_moments": m["overall"]["worst_timing_moments"],
-                     "worst_shape_moments": m["overall"]["worst_shape_moments"]} for m in summary["members"]],
+        "moments": [{"worst_timing_moments": m["overall"]["worst_timing_moments"], **pose}
+                    for m, pose in zip(summary["members"], pose_moments(sync["bone_shape_deg"], mirrored, float(kp["fps"]), config.sync.shape_threshold_deg))],
     }
 
 

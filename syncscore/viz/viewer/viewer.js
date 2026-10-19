@@ -322,7 +322,13 @@
       `${clockText(x.time_s)}  ${C.signedMs(x.offset_ms)}${x.part_furthest_off ? `<small>${x.part_furthest_off} furthest off</small>` : ""}`));
     if (!m.worst_shape_moments.length) shape.innerHTML = `<li class="empty">No pose moments beyond the group.</li>`;
     m.worst_shape_moments.forEach((it) => moment(shape, it, (x) =>
-      `${clockText(x.time_s)}  ${x.bone.replace(/_/g, " ")} ${Math.round(x.error_deg)}°<small>${Math.round(x.above_group_deg)}° beyond the group${x.likely_label_swap ? ", likely a left/right label swap" : ""}</small>`));
+      `${clockText(x.time_s)}  ${x.bone.replace(/_/g, " ")} ${Math.round(x.error_deg)}°<small>${Math.round(x.above_group_deg)}° beyond the group</small>`));
+    if (m.likely_label_swaps) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = `Not listed: ${m.likely_label_swaps} s where a bone points almost the opposite way (150° or more). That is usually the pose model swapping left and right, or facing away.`;
+      shape.appendChild(li);
+    }
   }
 
   function setView(view, member) {

@@ -169,3 +169,22 @@ def test_no_ghost_on_a_filled_in_pelvis(gappy):
     hip_filled = (group.conf[:, :, [11, 12]] < config.pose.min_keypoint_conf).any(axis=-1)
     assert hip_filled.sum() > 5
     assert np.isnan(ghost[hip_filled]).all()
+
+
+def test_pose_moments_leave_out_likely_label_swaps(results, tmp_path):
+    import shutil
+
+    out, config, spec = results
+    copy = tmp_path / "with_swaps"
+    shutil.copytree(out, copy)
+    sync = dict(np.load(copy / "sync_result.npz"))
+    hips = BONE_NAMES.index("hips")
+    sync["bone_shape_deg"] = sync["bone_shape_deg"].copy()
+    sync["bone_shape_deg"][0, 100:112, hips] = 179.0  # a left/right flip of member 0's hips for 0.4 s
+    np.savez_compressed(copy / "sync_result.npz", **sync)
+    data = viewer_data(copy, config, spec.image_size, None)
+    m0, m1 = data["moments"][0], data["moments"][1]
+    assert all(m["bone"] != "hips" for m in m0["worst_shape_moments"])
+    assert m0["likely_label_swaps"] >= 1
+    assert m1["worst_shape_moments"] and m1["worst_shape_moments"][0]["bone"] == "right_shin"
+    assert all(m["error_deg"] < 150 for member in data["moments"] for m in member["worst_shape_moments"])
