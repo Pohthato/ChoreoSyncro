@@ -187,4 +187,4 @@ def test_pose_moments_leave_out_likely_label_swaps(results, tmp_path):
     assert all(m["bone"] != "hips" for m in m0["worst_shape_moments"])
     assert m0["likely_label_swaps"] >= 1
     assert m1["worst_shape_moments"] and m1["worst_shape_moments"][0]["bone"] == "right_shin"
-    assert all(m["error_deg"] < 150 for member in data["moments"] for m in member["worst_shape_moments"])
+    assert all(m["error_deg"] < 90 for member in data["moments"] for m in member["worst_shape_moments"])

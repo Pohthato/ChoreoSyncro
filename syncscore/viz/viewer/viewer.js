@@ -320,13 +320,13 @@
     if (!m.worst_timing_moments.length) timing.innerHTML = `<li class="empty">No timing moments: no window measured reliably.</li>`;
     m.worst_timing_moments.forEach((it) => moment(timing, it, (x) =>
       `${clockText(x.time_s)}  ${C.signedMs(x.offset_ms)}${x.part_furthest_off ? `<small>${x.part_furthest_off} furthest off</small>` : ""}`));
-    if (!m.worst_shape_moments.length) shape.innerHTML = `<li class="empty">No pose moments beyond the group.</li>`;
+    if (!m.worst_shape_moments.length) shape.innerHTML = `<li class="empty">No pose difference held beyond the group.</li>`;
     m.worst_shape_moments.forEach((it) => moment(shape, it, (x) =>
-      `${clockText(x.time_s)}  ${x.bone.replace(/_/g, " ")} ${Math.round(x.error_deg)}°<small>${Math.round(x.above_group_deg)}° beyond the group</small>`));
+      `${clockText(x.time_s)}  ${x.bone.replace(/_/g, " ")} ${Math.round(x.error_deg)}°<small>held ${Math.round(x.above_group_deg)}° beyond the group's usual difference</small>`));
     if (m.likely_label_swaps) {
       const li = document.createElement("li");
       li.className = "empty";
-      li.textContent = `Not listed: ${m.likely_label_swaps} s where a bone points almost the opposite way (150° or more). That is usually the pose model swapping left and right, or facing away.`;
+      li.textContent = `Not listed: ${m.likely_label_swaps} s where a bone points 90° or more away from the group's. That is usually the pose model swapping left and right, or a turn; check those by eye.`;
       shape.appendChild(li);
     }
   }

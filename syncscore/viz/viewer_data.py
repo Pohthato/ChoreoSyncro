@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import json
 import shutil
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -23,12 +24,16 @@ import numpy as np
 from ..config import Config
 from ..features.bones import BONE_NAMES, mirror_name
 from ..sync.consensus import nanmedian_first_axis
-from ..sync.summary import LABEL_SWAP_DEG
 from .ghost import ghost_keypoints
 
 VIEWER_DIR = Path(__file__).resolve().parent / "viewer"
 _MISSING = -32768
 _FLIP_BONE = np.array([BONE_NAMES.index(mirror_name(n)) for n in BONE_NAMES])
+# A bone pointing this far or more from the group's is listed separately, not as a pose moment.
+# On the BTS clip pose differences over the threshold have a median of 40 degrees, while left/right
+# label swaps and facing differences sit at 120-180; a cut at 150 only let the next tier of the
+# same artefacts (141-149) fill every member's list.
+VERY_DIFFERENT_DEG = 90.0
 
 
 def encode_int16(values: np.ndarray, scale: float = 4.0) -> str:
@@ -77,33 +82,44 @@ def _halo(bone_deg: np.ndarray, mirrored: np.ndarray, threshold: float) -> np.nd
 
 
 def pose_moments(bone_deg: np.ndarray, mirrored: np.ndarray, fps: float, threshold: float, count: int = 3) -> list[dict]:
-    """Per member: the worst moments where a bone is more than `threshold` beyond the group's
-    typical error (one per second), and how many seconds were left out as likely label swaps.
+    """Per member: the biggest pose differences *held* for half a second (one per second), and how
+    many seconds were left out because a bone pointed `VERY_DIFFERENT_DEG` or more away.
 
-    The report keeps bone errors of 150 degrees or more in its list, flagged. On real footage those
-    crowd out everything else (on the BTS clip every member's top three were hips or shoulders
-    turned around: the pose model swapping left and right, or a dancer facing away), so a dancer's
-    "what to fix" list would be all tracking glitches. Here they are counted, not listed."""
+    Ranking single frames by their worst error lists artefacts: on the BTS clip every member's top
+    three were hips or shoulders turned around (the pose model swapping left and right, or a dancer
+    facing away), and cutting those off at any angle only let the next tier of the same artefacts
+    in. A difference held for half a second, by the median over the window, is what a dancer can
+    look at. Whether it is technique, style or a different part of the choreography, the list
+    doesn't say; that's the diagnosis still to come."""
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    width = max(3, int(round(0.5 * fps)))
     excess = bone_deg - nanmedian_first_axis(bone_deg)[None]
-    swap = np.nan_to_num(bone_deg) >= LABEL_SWAP_DEG
+    very = np.nan_to_num(bone_deg) >= VERY_DIFFERENT_DEG
     out = []
     for i in range(len(bone_deg)):
-        usable = np.where(swap[i], np.nan, excess[i])
-        worst = np.nanmax(np.nan_to_num(usable, nan=-np.inf), axis=1)
         moments, taken = [], []
-        for f in np.argsort(-worst):
-            if worst[f] < threshold or len(moments) == count:
-                break
-            if any(abs(f - t) < fps for t in taken):
-                continue
-            taken.append(f)
-            b = int(np.argmax(np.nan_to_num(usable[f], nan=-np.inf)))
-            name = mirror_name(BONE_NAMES[b]) if mirrored[i, f] else BONE_NAMES[b]
-            moments.append({"time_s": round(float(f / fps), 2), "bone": name, "error_deg": round(float(bone_deg[i, f, b]), 1),
-                            "above_group_deg": round(float(worst[f]), 1)})
-        swap_frames = np.flatnonzero((swap[i] & (np.nan_to_num(excess[i]) > threshold)).any(axis=1))
-        seconds = len(np.unique(np.floor(swap_frames / fps)))
-        out.append({"worst_shape_moments": moments, "likely_label_swaps": int(seconds)})
+        if len(bone_deg[i]) >= width:
+            window = sliding_window_view(np.where(very[i], np.nan, excess[i]), width, axis=0)  # (K, B, width)
+            seen = np.isfinite(window).mean(axis=-1)
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore", RuntimeWarning)
+                held = np.where(seen >= 0.8, np.nanmedian(window, axis=-1), np.nan)
+                errors = np.nanmedian(sliding_window_view(bone_deg[i], width, axis=0), axis=-1)
+            best = np.nanmax(np.nan_to_num(held, nan=-np.inf), axis=1)
+            for k in np.argsort(-best):
+                if best[k] < threshold or len(moments) == count:
+                    break
+                if any(abs(k - t) < fps for t in taken):
+                    continue
+                taken.append(k)
+                b = int(np.argmax(np.nan_to_num(held[k], nan=-np.inf)))
+                f = k + width // 2
+                name = mirror_name(BONE_NAMES[b]) if mirrored[i, f] else BONE_NAMES[b]
+                moments.append({"time_s": round(float(f / fps), 2), "bone": name, "error_deg": round(float(errors[k, b]), 1),
+                                "above_group_deg": round(float(best[k]), 1)})
+        left_out = np.flatnonzero((very[i] & (np.nan_to_num(excess[i]) > threshold)).any(axis=1))
+        out.append({"worst_shape_moments": moments, "likely_label_swaps": int(len(np.unique(np.floor(left_out / fps))))})
     return out
 
 

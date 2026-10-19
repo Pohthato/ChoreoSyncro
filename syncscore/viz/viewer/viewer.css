@@ -107,6 +107,7 @@ button:focus-visible, select:focus-visible, .tape:focus-visible, .moments button
 .moments button:hover { background: #f6f7f8; }
 .moments .empty { color: var(--muted); padding: 4px 2px; }
 .moments small { display: block; color: var(--muted); }
+.hint { margin: 0 0 6px; color: var(--muted); font-size: 13px; }
 
 .chip {
   display: inline-block; width: 11px; height: 11px; border-radius: 2px; background: var(--c, var(--none)); flex: none;
