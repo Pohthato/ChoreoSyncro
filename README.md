@@ -67,12 +67,15 @@ members are doing at that same moment, drawn on this member's body. A late dance
 ghost; a wrong arm shows as the gap between their arm and the ghost's.
 
 - **Whole group:** everyone at once, and a timeline of every member by section (click to jump).
-- **One dancer:** the view follows that member, with their worst timing and pose moments; click
-  one to replay it at ¼ speed in a 2-second loop.
+- **One dancer:** the view follows that member, with their worst timing moments and the pose
+  differences they held longest beyond the group; click one to replay it at ¼ speed in a 2-second
+  loop.
 - **Lineup:** everyone side by side, feet on one line, to compare a move.
 - Links open the page at a moment: `index.html?t=62.9&view=dancer&member=M3&speed=0.25`.
 
-The page reads the video from where it is and never copies it, so footage stays out of the repo.
+Only detected joints are drawn: joints the smoothing filled in for a few frames are left out, so
+nothing on screen is guessed. The page reads the video from where it is and never copies it, so
+footage stays out of the repo.
 The pictures below are skeleton-only (video switched off).
 
 ![The viewer, whole group (synthetic demo)](docs/media/viewer_group.png)
@@ -80,7 +83,7 @@ The pictures below are skeleton-only (video switched off).
 | | |
 |---|---|
 | ![M3 on the real clip](docs/media/viewer_ghost_original.png) | ![M3 delayed by 133 ms](docs/media/viewer_ghost_planted.png) |
-| *Real clip, M3 at a hit: skeleton and ghost overlap (an arm differs by style).* | *The same moment with M3's track delayed by 133 ms: the arms trail the ghost.* |
+| *Real clip, M3 at a hit: skeleton and ghost overlap (one arm differs).* | *The same moment with M3's track delayed by 133 ms: the arms trail the ghost.* |
 
 ## Validation
 

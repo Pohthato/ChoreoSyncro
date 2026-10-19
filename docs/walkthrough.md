@@ -501,6 +501,24 @@ report flags.
 |---|---|
 | ![M3 on the real clip](media/viewer_ghost_original.png) | ![M3 delayed](media/viewer_ghost_planted.png) |
 
+**Caught by the final review:**
+- **Guessed joints were drawn.** Smoothing fills gaps of up to 4 frames by interpolation, and the
+  analysis may use those; the page drew them too (1.5% of drawn joints on the real clip, and 339
+  frames of a whole skeleton that was mostly filled in). At quarter speed that is half a second
+  of straight-line motion that looks measured. Now only detected joints are drawn, and no ghost
+  is drawn on a filled-in pelvis.
+- **The dancer's pose list was all glitches.** Ranked by the single worst frame, every real
+  member's top three were bones turned around: left/right label swaps or facing away. Cutting
+  those at 150° let the 141-149° tier in, and at 90° the 85-90° tier: the worst single frame is
+  always an artefact. The list now ranks differences *held* for half a second (median over the
+  window), leaves out bones 90° or more away (counted, with a note to check them by eye), and is
+  called "held pose differences": technique, style or a different part, it doesn't say which.
+  On the synthetic demo the planted 25° elbow error tops it.
+- Clicking the timeline jumped to the start of a 32 s section; it now goes where you click. The
+  dancer view opened blank on a hidden member; it now frames them from the nearest frame they
+  were seen and says "not seen". The lineup stretched everyone to one height every frame, which
+  hid how low a squat was; each member now keeps their own scale.
+
 **What it can't show:** in 2D a member turned a different way from the others has a ghost that
 looks wrong even when they dance the same move (the 3D part of the plan addresses this), and the
 ghost of a member who is never seen has nothing to be drawn on.
