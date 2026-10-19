@@ -130,3 +130,42 @@ def test_view_command_writes_a_viewer(results, tmp_path):
     page = out / "viewer"
     assert (page / "index.html").is_file()
     assert video_url(video) in (page / "viewer_data.js").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def gappy(tmp_path_factory):
+    """A group with dropped keypoints, so smoothing fills short gaps (results without the slow renders)."""
+    from syncscore.sync.summary import summarize, write_summary
+
+    config = load_config()
+    group = make_group(GroupSpec(n_members=3, duration_s=8, fps=30, dropout=0.08, seed=22))
+    result, xy, conf = analyze_keypoints(group.keypoints, group.conf, group.fps, config, names=group.names)
+    out = tmp_path_factory.mktemp("gappy")
+    result.save(out / "sync_result.npz")
+    np.savez_compressed(out / "keypoints_smoothed.npz", xy=xy.astype(np.float32), conf=conf.astype(np.float32), fps=group.fps, names=np.array(group.names))
+    write_summary(summarize(result, config), out)
+    return out, config, group, conf
+
+
+def test_gap_filled_joints_are_not_drawn(gappy):
+    import base64
+
+    out, config, group, smoothed_conf = gappy
+    data = viewer_data(out, config, (1920, 1080), None)
+    m, t = smoothed_conf.shape[:2]
+    drawn = np.frombuffer(base64.b64decode(data["conf"]), dtype=np.uint8).reshape(m, t, 17)
+    measured = group.conf >= config.pose.min_keypoint_conf
+    filled = ~measured & (smoothed_conf >= config.pose.min_keypoint_conf)
+    assert filled.sum() > 50  # smoothing did fill gaps
+    assert (drawn[filled] == 0).all()
+    assert (drawn[measured] > 0).mean() > 0.99
+
+
+def test_no_ghost_on_a_filled_in_pelvis(gappy):
+    out, config, group, smoothed_conf = gappy
+    data = viewer_data(out, config, (1920, 1080), None)
+    m, t = smoothed_conf.shape[:2]
+    ghost = decode_int16(data["ghost"], (m, t, 17, 2))
+    hip_filled = (group.conf[:, :, [11, 12]] < config.pose.min_keypoint_conf).any(axis=-1)
+    assert hip_filled.sum() > 5
+    assert np.isnan(ghost[hip_filled]).all()

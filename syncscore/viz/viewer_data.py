@@ -50,6 +50,16 @@ def video_url(path: Path) -> str:
     return Path(path).resolve().as_uri()
 
 
+def measured_conf(conf: np.ndarray, min_conf: float) -> np.ndarray:
+    """conf where the joint was actually detected, 0 elsewhere.
+
+    Smoothing fills gaps of a few frames by interpolation and gives every filled joint exactly the
+    threshold confidence (pose/smooth.py). The analysis may use those, but the page must not draw
+    them: half a second of straight-line motion at quarter speed looks measured and isn't."""
+    filled = np.isclose(conf, np.float32(min_conf), rtol=0.0, atol=1e-6)
+    return np.where((conf >= min_conf) & ~filled, conf, 0.0)
+
+
 def _per_frame_mirrored(sync: dict, n_frames: int) -> np.ndarray:
     centers = sync["window_centers_s"] * float(sync["fps"])
     nearest = np.abs(np.arange(n_frames)[:, None] - centers[None, :]).argmin(axis=1)
@@ -70,7 +80,8 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
     kp = np.load(result_dir / "keypoints_smoothed.npz")
     sync = dict(np.load(result_dir / "sync_result.npz"))
     summary = json.loads((result_dir / "summary.json").read_text(encoding="utf-8"))
-    xy, conf = kp["xy"].astype(float), kp["conf"].astype(float)
+    xy = kp["xy"].astype(float)
+    conf = measured_conf(kp["conf"].astype(float), config.pose.min_keypoint_conf)  # drawn: detected joints only
     members, n_frames = xy.shape[:2]
     mirrored = _per_frame_mirrored(sync, n_frames)
     ghost = ghost_keypoints(xy, conf, mirrored, config.pose.min_keypoint_conf)
@@ -81,11 +92,12 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
         "version": 1, "fps": float(kp["fps"]), "n_frames": int(n_frames), "image_size": [int(v) for v in image_size],
         "names": [str(n) for n in kp["names"]],
         "in_sync_ms": config.render.in_sync_ms, "off_sync_ms": config.render.off_sync_ms,
-        "shape_threshold_deg": config.sync.shape_threshold_deg, "min_keypoint_conf": config.pose.min_keypoint_conf, "video": video,
+        "shape_threshold_deg": config.sync.shape_threshold_deg, "video": video,
         "sections": [{"name": s["name"], "start_s": s["start_s"], "end_s": s["end_s"]} for s in summary["sections"]],
         "section_status": status,
         "keypoints": encode_int16(xy), "ghost": encode_int16(ghost),
-        "conf": _b64(np.clip(np.round(conf * 255), 0, 255).astype(np.uint8)),
+        # Every drawn joint is at least 1/255, every undrawn one exactly 0: the page draws conf > 0.
+        "conf": _b64(np.where(conf > 0, np.clip(np.round(conf * 255), 1, 255), 0).astype(np.uint8)),
         "halo": _b64(_halo(sync["bone_shape_deg"], mirrored, config.sync.shape_threshold_deg)),
         "moments": [{"worst_timing_moments": m["overall"]["worst_timing_moments"],
                      "worst_shape_moments": m["overall"]["worst_shape_moments"]} for m in summary["members"]],

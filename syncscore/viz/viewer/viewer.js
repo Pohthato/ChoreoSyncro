@@ -8,7 +8,8 @@
 
   const M = D.names.length, T = D.n_frames, FPS = D.fps;
   const [IW, IH] = D.image_size;
-  const MIN_CONF = D.min_keypoint_conf;
+  // The data marks undrawn joints (undetected, or filled in by smoothing) with confidence 0.
+  const MIN_CONF = 0.5 / 255;
   const KP = C.decodeInt16(D.keypoints, 4);
   const GH = C.decodeInt16(D.ghost, 4);
   const CF = C.decodeUint8(D.conf);
