@@ -57,6 +57,31 @@ flowchart LR
 
 The full reasoning, stage by stage, is in [docs/walkthrough.md](docs/walkthrough.md).
 
+## See it
+
+`syncscore view path/to/video.mp4 --results results/` writes a small folder; open its
+`index.html` in any browser (no server, nothing to install). It plays your video with every
+member's skeleton drawn on them, coloured by their timing in that section, a pink mark on any
+limb more than 15° beyond the group's usual difference, and a thin white **ghost**: what the other
+members are doing at that same moment, drawn on this member's body. A late dancer trails their
+ghost; a wrong arm shows as the gap between their arm and the ghost's.
+
+- **Whole group:** everyone at once, and a timeline of every member by section (click to jump).
+- **One dancer:** the view follows that member, with their worst timing and pose moments; click
+  one to replay it at ¼ speed in a 2-second loop.
+- **Lineup:** everyone side by side, feet on one line, to compare a move.
+- Links open the page at a moment: `index.html?t=62.9&view=dancer&member=M3&speed=0.25`.
+
+The page reads the video from where it is and never copies it, so footage stays out of the repo.
+The pictures below are skeleton-only (video switched off).
+
+![The viewer, whole group (synthetic demo)](docs/media/viewer_group.png)
+
+| | |
+|---|---|
+| ![M3 on the real clip](docs/media/viewer_ghost_original.png) | ![M3 delayed by 133 ms](docs/media/viewer_ghost_planted.png) |
+| *Real clip, M3 at a hit: skeleton and ghost overlap (an arm differs by style).* | *The same moment with M3's track delayed by 133 ms: the arms trail the ghost.* |
+
 ## Validation
 
 Real footage never comes with the truth, so the method is tested on synthetic groups where it
@@ -207,6 +232,7 @@ python -m venv .venv
 syncscore demo --out results/demo                 # synthetic group through every output
 syncscore validate --out results/validate         # the benchmark above (a few minutes, runs in parallel)
 syncscore analyze path/to/video.mp4 --out results/   # real video
+syncscore view path/to/video.mp4 --results results/  # the viewer: open results/viewer/index.html
 syncscore shift-test --results results/               # plant known delays in real tracks, check they come back
 syncscore audit path/to/video.mp4 --results results/ # sample frames to label IDs by hand
 syncscore audit-score results/audit/ids.csv          # true ID-swap rate
@@ -246,10 +272,11 @@ syncscore/
   features/  bones.py (bone directions, mirroring)
   sync/      consensus.py, timing.py, shape.py, measure.py (the method), summary.py
   synth/     generate.py (synthetic groups), benchmark.py, report.py
-  viz/       skeleton_video.py, heatmap.py, report_card.py, smoothing_plot.py, style.py
+  viz/       skeleton_video.py, heatmap.py, report_card.py, smoothing_plot.py, style.py,
+             ghost.py, viewer_data.py, viewer/ (the page: index.html, viewer.js, viewer_core.js, viewer.css)
   cli.py, pipeline.py, outputs.py, config.py
 configs/default.yaml
-tests/       alignment math, synthetic recovery, smoothing, tracking, outputs
+tests/       alignment math, synthetic recovery, smoothing, tracking, outputs, viewer (js/ runs in Node)
 docs/        walkthrough.md, validation.md, media/ (derived renders only)
 ```
 

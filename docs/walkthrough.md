@@ -455,3 +455,52 @@ torso is mostly the front dancer's clothes. Filling can't
 create a lasting swap (a gap is only filled between the member's own sightings, at most 2 s
 apart), but the newly visible crossings can expose stitching errors that were hidden before.
 The true rate needs the hand audit (`syncscore audit`).
+
+## Stage E: seeing it (`viz/ghost.py`, `viz/viewer_data.py`, `viz/viewer/`)
+
+**Why:** numbers in a report don't show a dancer *what* to fix. The question a choreographer asks
+while watching is "is she late, or is her arm wrong?", and that is easiest to answer by looking.
+
+**What it is:** `syncscore view` writes a local web page that plays the practice video with every
+member's skeleton on them and a **ghost**: the other members' pose at that same frame (the
+median direction of each bone over everyone else), drawn from this member's pelvis with their own
+bone lengths. Two choices:
+- **Leave-one-out**, as everywhere else: a member never drags their own ghost toward themselves.
+- **The same video frame**, no timing estimate in between: the ghost shows what the others are
+  doing *now*, so a late member simply trails it. Nothing the analysis estimated is needed to see
+  the lateness.
+
+The page computes nothing. Skeletons, ghosts, halos and section status are written by Python
+into one data file (10 MB for the 3:50 clip), so the page shows exactly what the report says. It
+opens from disk with no server, reads the video from where it is and never copies it. Its pure
+logic (decoding, frame lookup, status words, the follow-cam box, the lineup, the playback clock)
+is unit-tested in Node; the page itself was checked in a browser.
+
+**Found by building it:**
+- Drawn under the skeleton at 45% opacity, the ghost vanished exactly where a dancer matched
+  the group. Drawn on top as a thin white line it reads both ways: a white core along a limb means
+  "matching", a separate white line is the gap.
+- The page's playback clock could step *backwards* on its first frame (a frame's timestamp can
+  come before the clock starts). Steps are now clamped to 0-0.25 s, tested.
+
+**Proof on the real clip:** delay M3's real track by 133 ms (4 frames) and measure, over the
+whole clip, the shift at which each member's bone directions best match their ghost:
+
+| | M3 | the other six |
+|---|---|---|
+| original | 0 frames | 0 |
+| M3 delayed 133 ms | **+4 frames** | 0 or -1 (M3's delayed pose is one of the six in their ghost) |
+
+At a fast move the difference is plain to see: M3's arms sit 7.5% of their body height from the
+ghost in the original and 30% after the delay (at the hit at 62.9 s, picked as a clear example).
+Over the whole clip the median gap barely moves (6.6% to 7.2%): while a pose is held, 133 ms
+changes nothing visible. That is why the viewer's slow-motion loop starts at the moments the
+report flags.
+
+| original | M3 delayed 133 ms |
+|---|---|
+| ![M3 on the real clip](media/viewer_ghost_original.png) | ![M3 delayed](media/viewer_ghost_planted.png) |
+
+**What it can't show:** in 2D a member turned a different way from the others has a ghost that
+looks wrong even when they dance the same move (the 3D part of the plan addresses this), and the
+ghost of a member who is never seen has nothing to be drawn on.
