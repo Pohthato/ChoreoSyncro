@@ -91,7 +91,10 @@
   function toStage(view) {
     if (state.view === "group") return fit({ x: 0, y: 0, w: IW, h: IH }, view.w, view.h);
     const f = C.frameAt(now(), FPS, T);
-    const target = C.followBox(C.pointsAt(KP, T, state.member, f), C.confAt(CF, T, state.member, f), MIN_CONF, state.box, 0.25);
+    const memberAt = (k) => ({ points: C.pointsAt(KP, T, state.member, k), conf: C.confAt(CF, T, state.member, k) });
+    // Unseen with no box yet (the view just opened on a hidden member): frame them where they were last or next seen.
+    const target = C.followBox(memberAt(f).points, memberAt(f).conf, MIN_CONF, state.box, 0.25)
+      || C.nearestBox(memberAt, f, T, MIN_CONF, 0.25, Math.round(10 * FPS));
     if (target) {
       // Grow the box to the stage's shape, then ease toward it so the camera doesn't shake.
       const aspect = view.w / view.h;
@@ -186,7 +189,7 @@
       if (label) labels.push(label);
     }
     drawLabels(ctx, labels, unit);
-    if (state.view === "dancer" && state.box && !state.box.seen) {
+    if (state.view === "dancer" && !C.followBox(C.pointsAt(KP, T, state.member, f), C.confAt(CF, T, state.member, f), MIN_CONF, null, 0)) {
       ctx.fillStyle = "#c3c2b7";
       ctx.font = `${14 * unit}px ${getComputedStyle(document.body).fontFamily}`;
       ctx.textAlign = "left";

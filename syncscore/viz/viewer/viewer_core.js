@@ -116,6 +116,20 @@
     return { x: x0 - margin, y: y0 - margin, w: x1 - x0 + 2 * margin, h: y1 - y0 + 2 * margin, seen: true };
   }
 
+  // The box around a member at `frame`, or if unseen there, at the nearest frame within `reach`
+  // where they were seen (marked seen: false). `frameAt(f)` returns { points, conf }.
+  function nearestBox(frameAt, frame, nFrames, minConf, pad, reach) {
+    for (let d = 0; d <= reach; d++) {
+      for (const f of d === 0 ? [frame] : [frame - d, frame + d]) {
+        if (f < 0 || f >= nFrames) continue;
+        const { points, conf } = frameAt(f);
+        const box = followBox(points, conf, minConf, null, pad);
+        if (box) return d === 0 ? box : { ...box, seen: false };
+      }
+    }
+    return null;
+  }
+
   // Scale a member to `targetHeight` (nose to feet) with their feet at (slotX, floorY).
   function lineupTransform(points, conf, minConf, slotX, floorY, targetHeight) {
     const ext = extended(points, conf, minConf);
@@ -151,7 +165,7 @@
 
   const SyncCore = {
     BONES, TORSO_SIDES, COLORS, decodeInt16, decodeUint8, decodeUint16, frameAt, sectionAt, signedMs, statusOf,
-    pointsAt, confAt, skeletonSegments, followBox, lineupTransform, wrapLoop, advanceClock,
+    pointsAt, confAt, skeletonSegments, followBox, nearestBox, lineupTransform, wrapLoop, advanceClock,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = SyncCore;
   else root.SyncCore = SyncCore;

@@ -117,3 +117,13 @@ test("advanceClock stops at the end", () => {
   assert.equal(r.ended, true);
   assert.ok(r.time < 32);
 });
+
+test("nearestBox frames a member from the nearest frame they were seen", () => {
+  const seenAt = { 12: person(800, 100, 300), 30: person(200, 100, 300) };
+  const frame = (f) => ({ points: seenAt[f] || NAN17(), conf: CONF });
+  const box = core.nearestBox(frame, 5, 40, 0.3, 0.25, 15);
+  assert.equal(box.seen, false);
+  assert.ok(box.x < 800 && box.x + box.w > 800); // from frame 12, the nearer one
+  assert.equal(core.nearestBox(frame, 5, 40, 0.3, 0.25, 3), null); // nothing within reach
+  assert.equal(core.nearestBox(frame, 12, 40, 0.3, 0.25, 3).seen, true);
+});
