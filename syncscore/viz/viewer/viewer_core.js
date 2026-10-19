@@ -134,8 +134,9 @@
     return null;
   }
 
-  // Scale a member to `targetHeight` (nose to feet) with their feet at (slotX, floorY).
-  function lineupTransform(points, conf, minConf, slotX, floorY, targetHeight) {
+  // Feet at (slotX, floorY). With `memberHeight` (their usual nose-to-feet height) the scale is the
+  // member's own and fixed, so a squat stays lower than standing; without it, this frame's height.
+  function lineupTransform(points, conf, minConf, slotX, floorY, targetHeight, memberHeight) {
     const ext = extended(points, conf, minConf);
     const present = ext.slice(0, 17).filter(Boolean);
     if (present.length < 4) return null;
@@ -144,7 +145,7 @@
       ? [ankles.reduce((s, p) => s + p[0], 0) / ankles.length, ankles.reduce((s, p) => s + p[1], 0) / ankles.length]
       : present.reduce((low, p) => (p[1] > low[1] ? p : low));
     const top = ext[0] ? ext[0][1] : Math.min(...present.map((p) => p[1]));
-    const height = feet[1] - top;
+    const height = memberHeight > 1 ? memberHeight : feet[1] - top;
     if (!(height > 1)) return null;
     const scale = targetHeight / height;
     return { scale, dx: slotX - scale * feet[0], dy: floorY - scale * feet[1] };

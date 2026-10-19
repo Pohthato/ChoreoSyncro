@@ -123,6 +123,18 @@ def pose_moments(bone_deg: np.ndarray, mirrored: np.ndarray, fps: float, thresho
     return out
 
 
+def _heights(xy: np.ndarray, conf: np.ndarray) -> list:
+    """Each member's usual nose-to-feet height in pixels (median over frames where both are drawn),
+    so the lineup can keep their scale fixed instead of stretching every frame to one height."""
+    out = []
+    for i in range(len(xy)):
+        known = (conf[i, :, 0] > 0) & (conf[i, :, 15] > 0) & (conf[i, :, 16] > 0)
+        span = (xy[i, known, 15, 1] + xy[i, known, 16, 1]) / 2 - xy[i, known, 0, 1]
+        span = span[span > 1]
+        out.append(round(float(np.median(span)), 1) if span.size else 0.0)
+    return out
+
+
 def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], video: str | None) -> dict:
     result_dir = Path(result_dir)
     kp = np.load(result_dir / "keypoints_smoothed.npz")
@@ -147,6 +159,7 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
         # Every drawn joint is at least 1/255, every undrawn one exactly 0: the page draws conf > 0.
         "conf": _b64(np.where(conf > 0, np.clip(np.round(conf * 255), 1, 255), 0).astype(np.uint8)),
         "halo": _b64(_halo(sync["bone_shape_deg"], mirrored, config.sync.shape_threshold_deg)),
+        "heights": _heights(xy, conf),
         "moments": [{"worst_timing_moments": m["overall"]["worst_timing_moments"], **pose}
                     for m, pose in zip(summary["members"], pose_moments(sync["bone_shape_deg"], mirrored, float(kp["fps"]), config.sync.shape_threshold_deg))],
     }

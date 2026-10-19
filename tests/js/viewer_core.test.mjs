@@ -133,3 +133,12 @@ test("trackTime turns a click on the timeline into the time under it", () => {
   assert.equal(core.trackTime(50, 100, 400, 230), 0);
   assert.equal(core.trackTime(900, 100, 400, 230), 230);
 });
+
+test("lineupTransform keeps a member's own scale, so a squat stays low", () => {
+  const standing = person(300, 50, 300), squat = person(300, 140, 210);
+  const a = core.lineupTransform(standing, CONF, 0.3, 100, 400, 150, 285);
+  const b = core.lineupTransform(squat, CONF, 0.3, 100, 400, 150, 285);
+  assert.equal(a.scale, b.scale);
+  const top = (pts, t) => pts[0][1] * t.scale + t.dy;
+  assert.ok(400 - top(squat, b) < 0.8 * (400 - top(standing, a)));
+});

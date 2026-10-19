@@ -214,7 +214,7 @@
     for (let i = 0; i < M; i++) {
       const cx = slot * (i + 0.5);
       const pts = C.pointsAt(KP, T, i, f), conf = C.confAt(CF, T, i, f);
-      const tr = C.lineupTransform(pts, conf, MIN_CONF, cx, floor, height);
+      const tr = C.lineupTransform(pts, conf, MIN_CONF, cx, floor, height * 0.85, D.heights[i]);
       const status = statusAt(i, t);
       lctx.font = `${13 * unit}px ${getComputedStyle(document.body).fontFamily}`;
       lctx.fillStyle = "#c3c2b7";

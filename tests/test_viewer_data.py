@@ -15,7 +15,7 @@ from syncscore.synth.generate import GroupSpec, LimbError, make_group
 from syncscore.viz.viewer_data import decode_int16, encode_int16, video_url, viewer_data, write_viewer
 
 KEYS = {"version", "fps", "n_frames", "image_size", "names", "in_sync_ms", "off_sync_ms", "shape_threshold_deg", "video",
-        "sections", "section_status", "keypoints", "ghost", "conf", "halo", "moments"}
+        "sections", "section_status", "keypoints", "ghost", "conf", "halo", "moments", "heights"}
 
 
 @pytest.fixture(scope="module")
@@ -49,6 +49,8 @@ def test_viewer_data_has_every_part_the_page_reads(results):
     assert np.allclose(keypoints[both], smoothed[both], atol=0.125)
     assert data["n_frames"] == smoothed.shape[1] and data["names"] == ["M1", "M2", "M3"]
     assert len(data["section_status"]) == 3 and len(data["section_status"][0]) == len(data["sections"])
+    # Synthetic bodies stand 312-448 px tall; nose to ankles is about 80% of that.
+    assert len(data["heights"]) == 3 and all(200 < h < 400 for h in data["heights"])
 
 
 def test_halo_marks_the_planted_limb_error(results):
