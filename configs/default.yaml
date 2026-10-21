@@ -58,6 +58,13 @@ unison:
   own_smooth_s: 2.0
   min_others: 2
 
+beat:
+  # Clean landings of big moves, marked against the music's beat in the viewer (syncscore/sync/landings.py).
+  landing_peak: 2.5           # the move peaks at least this x the member's usual moving speed
+  landing_hold: 0.5           # ...and falls to this or less
+  landing_within_s: 0.2       # ...within this long
+  landing_level: 0.25         # landing time: speed three quarters of the way down to the hold
+
 hits:
   # Timing at the group's big simultaneous movements (syncscore/sync/hits.py). Scored by
   # `syncscore shift-test`; not used in the report (it added no reliable readings on the test

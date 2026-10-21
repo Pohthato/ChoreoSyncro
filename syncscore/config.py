@@ -85,6 +85,14 @@ class UnisonConfig:
 
 
 @dataclass
+class BeatConfig:
+    landing_peak: float = 2.5       # a clean landing's move peaks at least this x the member's usual moving speed
+    landing_hold: float = 0.5       # ...and falls to this or less
+    landing_within_s: float = 0.2   # ...within this long
+    landing_level: float = 0.25     # landing time: speed fallen this close to the hold (0.25 = three quarters down)
+
+
+@dataclass
 class HitsConfig:
     prominence: float = 1.5      # a group hit rises this far above its surroundings (x a member's typical speed)
     max_offset_ms: float = 400.0 # search range for the member's matching peak
@@ -111,6 +119,7 @@ class Config:
     sections: SectionsConfig = field(default_factory=SectionsConfig)
     hits: HitsConfig = field(default_factory=HitsConfig)
     unison: UnisonConfig = field(default_factory=UnisonConfig)
+    beat: BeatConfig = field(default_factory=BeatConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
 
 
