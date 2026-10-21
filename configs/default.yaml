@@ -50,8 +50,8 @@ sections:
 
 unison:
   # When the group dances together (syncscore/sync/unison.py). Outside it: no ghost, no group timing.
-  max_spread_deg: 25          # two members dance the same thing: limb angle between them; most of the others must
-  max_own_deg: 30             # this member dances what they dance (over own_smooth_s, so brief mistakes don't count)
+  max_spread_deg: 25          # two members dance the same thing: limb angle between them (floor; the limit is 2x this clip's typical)
+  max_own_deg: 30             # this member dances what they dance, over own_smooth_s (floor; 2x this clip's typical)
   moving_speed: 0.3           # "moving" = average speed over smooth_s above this x the member's usual moving speed
   min_moving_share: 0.5       # the others count as moving when at least half of them are
   smooth_s: 1.0

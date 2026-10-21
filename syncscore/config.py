@@ -75,8 +75,8 @@ class SectionsConfig:
 
 @dataclass
 class UnisonConfig:
-    max_spread_deg: float = 25.0    # two members dance the same thing: limb angle between them, over smooth_s
-    max_own_deg: float = 30.0       # this member dances what they dance: limb angle to their median, over own_smooth_s
+    max_spread_deg: float = 25.0    # two members dance the same thing: limb angle between them (at least; 2x the clip's typical)
+    max_own_deg: float = 30.0       # this member dances what they dance: limb angle to their median (at least; 2x the clip's typical)
     moving_speed: float = 0.3       # "moving" = average speed over smooth_s above this x the member's usual moving speed
     min_moving_share: float = 0.5   # the others are moving when at least this share of them is
     smooth_s: float = 1.0

@@ -75,3 +75,26 @@ def test_apart_intervals_merge_runs():
 def test_two_members_are_together_when_they_dance_the_same():
     group = make_group(GroupSpec(n_members=2, duration_s=12, fps=30, seed=70))
     assert _together(group.keypoints, group.conf, group.fps).mean() >= 0.95
+
+
+def test_footage_wide_differences_still_count_as_together():
+    # Same moves, but each member's limbs are turned by a fixed 0/15/30/45/60 degrees (camera angle,
+    # personal style): pairs sit 15-60 degrees apart all the time. Fixed 25-degree limits would call
+    # everyone apart; the limits scale with the clip's typical difference, so it is still unison.
+    import dataclasses
+
+    group = make_group(GroupSpec(n_members=5, duration_s=20, fps=30, seed=72))
+    u, w, speed = [], [], []
+    for i in range(5):
+        f = bone_directions(group.keypoints[i], group.conf[i], CFG.pose.min_keypoint_conf)
+        a = np.radians(15.0 * i)
+        rot = np.array([[np.cos(a), -np.sin(a)], [np.sin(a), np.cos(a)]])
+        turned = f.u @ rot.T
+        v, vw = velocity(turned, f.weight, group.fps, CFG.sync.max_bone_speed_deg_s)
+        u.append(turned)
+        w.append(f.weight)
+        speed.append(member_speed(v, vw))
+    u, w, speed = np.stack(u), np.stack(w), np.stack(speed)
+    assert together(u, w, speed, group.fps, CFG.unison).mean() >= 0.85
+    fixed = dataclasses.replace(CFG.unison, max_spread_deg=25.0, max_own_deg=30.0)
+    assert fixed.max_spread_deg == CFG.unison.max_spread_deg  # the floors are the old fixed limits

@@ -21,6 +21,13 @@ Member i is together with the group at frame t when, over a short window:
 
 Limb bones only (upper arms, forearms, thighs, shins): the torso and head barely move in most
 choreography and would dilute the comparison.
+
+**The limits scale with the footage.** In 2D, camera angle and personal styling put members' limbs
+apart even when they dance the same move: on the BTS clip pairs of members sat at a median of 17
+degrees, a quarter of them above 24. A fixed 25-degree limit then marked three members dancing a
+verse together as "apart". So both limits are at least twice this clip's typical difference
+(the median over pairs, or over members, while most members are seen), with `max_spread_deg` and
+`max_own_deg` as floors. Clean synthetic groups keep the floors, so their splits are still caught.
 """
 from __future__ import annotations
 
@@ -80,11 +87,20 @@ def together(u: np.ndarray, w: np.ndarray, speed: np.ndarray, fps: float, cfg) -
     with np.errstate(invalid="ignore"):
         moving = np.where(seen, (_smooth(speed, window) > cfg.moving_speed).astype(float), np.nan)
     state = np.nan_to_num(moving) > 0.5
+    crowd = seen.sum(axis=0) >= max(2, int(np.ceil(2 * members / 3)))  # most members seen: what "typical" is judged on
+    pair = {(a, b): _smooth(_limb_angle(u[a], w[a], u[b], w[b]), window) for a in range(members) for b in range(a + 1, members)}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        typical_pair = np.nanmedian(np.concatenate([v[crowd] for v in pair.values()])) if pair and crowd.any() else 0.0
+    max_spread = max(cfg.max_spread_deg, 2.0 * np.nan_to_num(typical_pair))
     close = np.eye(members, dtype=bool)[:, :, None].repeat(frames, axis=2)  # (M, M, T) within max_spread of each other
-    for a in range(members):
-        for b in range(a + 1, members):
-            near = np.nan_to_num(_smooth(_limb_angle(u[a], w[a], u[b], w[b]), window), nan=np.inf) <= cfg.max_spread_deg
-            close[a, b] = close[b, a] = near
+    for (a, b), angle in pair.items():
+        close[a, b] = close[b, a] = np.nan_to_num(angle, nan=np.inf) <= max_spread
+    own_angle = np.stack([_smooth(_limb_angle(u[i], w[i], ref[i], ref_w[i]), own_window) for i in range(members)])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        typical_own = np.nanmedian(own_angle[:, crowd]) if crowd.any() else 0.0
+    max_own = max(cfg.max_own_deg, 2.0 * np.nan_to_num(typical_own))
     out = np.zeros((members, frames), dtype=bool)
     for i in range(members):
         others = [j for j in range(members) if j != i]
@@ -94,7 +110,7 @@ def together(u: np.ndarray, w: np.ndarray, speed: np.ndarray, fps: float, cfg) -
         # Largest set of others close to one of them (a member and everyone near them), as a share.
         biggest = close[np.ix_(others, others)].sum(axis=1).max(axis=0)
         agree = biggest > len(others) / 2
-        own = np.nan_to_num(_smooth(_limb_angle(u[i], w[i], ref[i], ref_w[i]), own_window), nan=np.inf) <= cfg.max_own_deg
+        own = np.nan_to_num(own_angle[i], nan=np.inf) <= max_own
         their_state = np.nan_to_num(others_moving, nan=0.0) >= cfg.min_moving_share  # already smoothed, like state[i]
         enough = seen[others].sum(axis=0) >= min(cfg.min_others, len(others))
         out[i] = seen[i] & enough & agree & own & (state[i] == their_state)
