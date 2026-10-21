@@ -96,3 +96,33 @@ def test_a_member_facing_the_other_way_is_not_scored_as_180_degree_pose_errors(c
     assert result.facing_differently[2].any()
     assert not result.facing_differently[[0, 1, 3, 4]].any()
     assert np.nanmax(result.bone_shape_deg[2]) < 120.0
+
+
+def test_no_timing_while_a_member_solos(config):
+    from syncscore.synth.generate import Interval
+
+    group = make_group(GroupSpec(n_members=5, duration_s=30, fps=30, solos=[Interval(2, 10.0, 18.0)], seed=68))
+    result = measure_sync(group.keypoints, group.conf, group.fps, config)
+    centres = result.window_centers_s
+    inside = (centres > 11.0) & (centres < 17.0)
+    assert not result.reliable[2, inside].any()
+    assert not result.part_reliable[2][:, inside].any()
+    outside = (centres < 9.0) | (centres > 19.0)
+    assert result.reliable[2, outside].mean() > 0.7
+
+
+def test_unison_results_are_unchanged(config):
+    offsets = [0, 33, -67, 133, 17]
+    group = make_group(GroupSpec(n_members=5, duration_s=30, fps=30, offsets_ms=offsets, seed=11))
+    result = measure_sync(group.keypoints, group.conf, group.fps, config)
+    assert result.together.mean() > 0.95
+    assert np.allclose(_member_offsets(result), np.array(offsets) - np.median(offsets), atol=1.5)
+
+
+def test_no_timing_while_the_group_dances_split_parts(config):
+    group = make_group(GroupSpec(n_members=7, duration_s=30, fps=30, parts=[([4, 5, 6], 10.0, 18.0)], seed=69))
+    result = measure_sync(group.keypoints, group.conf, group.fps, config)
+    inside = (result.window_centers_s > 11.0) & (result.window_centers_s < 17.0)
+    assert not result.reliable[:, inside].any()
+    outside = (result.window_centers_s < 9.0) | (result.window_centers_s > 19.0)
+    assert result.reliable[:, outside].mean() > 0.7

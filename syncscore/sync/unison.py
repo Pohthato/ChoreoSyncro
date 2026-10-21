@@ -86,12 +86,13 @@ def together(u: np.ndarray, w: np.ndarray, speed: np.ndarray, fps: float, cfg) -
         pairs = [angle for (a, b), angle in pair_angle.items() if i not in (a, b)]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            spread = np.nanmedian(np.stack(pairs), axis=0) if pairs else np.full(frames, np.nan)
+            # With a single other member there is nobody for them to disagree with.
+            spread = np.nanmedian(np.stack(pairs), axis=0) if pairs else np.zeros(frames)
             others_moving = np.nanmean(moving[others], axis=0)
         agree = np.nan_to_num(_smooth(spread, window), nan=np.inf) <= cfg.max_spread_deg
         own = np.nan_to_num(_smooth(_limb_angle(u[i], w[i], ref[i], ref_w[i]), own_window), nan=np.inf) <= cfg.max_own_deg
         their_state = np.nan_to_num(others_moving, nan=0.0) >= cfg.min_moving_share  # already smoothed, like state[i]
-        enough = seen[others].sum(axis=0) >= cfg.min_others
+        enough = seen[others].sum(axis=0) >= min(cfg.min_others, len(others))
         out[i] = seen[i] & enough & agree & own & (state[i] == their_state)
     return out
 

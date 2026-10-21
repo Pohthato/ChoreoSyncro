@@ -70,3 +70,8 @@ def test_apart_intervals_merge_runs():
     assert len(out) == 1 and len(out[0]) == 1
     start, end = out[0][0]
     assert abs(start - 2.0) < 1e-9 and abs(end - 4.0) < 1e-9
+
+
+def test_two_members_are_together_when_they_dance_the_same():
+    group = make_group(GroupSpec(n_members=2, duration_s=12, fps=30, seed=70))
+    assert _together(group.keypoints, group.conf, group.fps).mean() >= 0.95

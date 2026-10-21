@@ -34,6 +34,7 @@ from ..config import Config
 from ..features.bones import BONE_NAMES, PART_OF_BONE, PARTS, bone_directions, mirror_keypoints
 from .consensus import group_median, leave_one_out_median, warp
 from .hits import hit_timing
+from .unison import member_speed, together as dancing_together
 from .shape import shape_errors
 from .timing import Windows, estimate_lags, make_windows, velocity
 
@@ -66,6 +67,7 @@ class SyncResult:
     hit_times_s: np.ndarray        # (H,) the group's hits (see hits.py)
     hit_offset_ms: np.ndarray      # (M, H) member's peak minus the others' median peak; NaN = no clean match
     hit_agreement: np.ndarray      # (M, H) how well the member's movement matched the group's direction there
+    together: np.ndarray           # (M, T) bool: dancing together with the group (unison.py); timing only counts there
     bone_names: tuple = BONE_NAMES
     part_names: tuple = PARTS
     notes: list = field(default_factory=list)
@@ -209,6 +211,17 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
         facing[i] = (np.nan_to_num(bone_deg[i, :, _SHOULDERS]) > FACING_DEG) & (np.nan_to_num(bone_deg[i, :, _HIPS]) > FACING_DEG)
         bone_deg[i, facing[i]] = np.nan
         part_deg[i, facing[i]] = np.nan
+    # Dancing together: a member's timing against the group only counts while the group is dancing
+    # the same thing (unison.py). Decided on each member's final orientation, so a mirrored member
+    # isn't mistaken for one dancing different moves.
+    final = [chosen(i) for i in range(members)]
+    joint = dancing_together(np.stack([c[0] for c in final]), np.stack([c[1] for c in final]),
+                             np.stack([member_speed(c[2], c[3]) for c in final]), fps, config.unison)
+    share = np.cumsum(np.concatenate([np.zeros((members, 1)), joint.astype(float)], axis=1), axis=1)
+    window_share = (share[:, windows.starts + windows.length] - share[:, windows.starts]) / windows.length
+    apart = window_share < 0.5
+    reliable = reliable & ~apart
+    part_ok = part_ok & ~apart[:, None, :]
     # Hits: every member's own peaks on the video clock, so this needs no alignment.
     moving = [chosen(i)[2:] for i in range(members)]
     hits = hit_timing([v for v, _ in moving], [vw for _, vw in moving], fps, config.hits)
@@ -220,6 +233,6 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
         part_offset_ms=part_lag * frame_ms, part_reliable=part_ok, mirrored=mirrored,
         offset_curve_ms=curves * frame_ms, bone_shape_deg=bone_deg, part_shape_deg=part_deg,
         facing_differently=facing,
-        hit_times_s=hits.frames / fps, hit_offset_ms=hits.offset_ms, hit_agreement=hits.agreement,
+        hit_times_s=hits.frames / fps, hit_offset_ms=hits.offset_ms, hit_agreement=hits.agreement, together=joint,
     )
 
