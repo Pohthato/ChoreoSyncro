@@ -7,10 +7,11 @@ then measures nothing (on real footage these stretches were a large part of why 
 out with no reading).
 
 Member i is together with the group at frame t when, over a short window:
-- the **others agree** on their pose: the median, over every pair of them, of the angle between
-  the pair's limbs is at most `max_spread_deg` (over `smooth_s`). Split parts fail here. (Pairs,
-  not "angle to the median": in a 3/3 split the median falls between the two parts and everyone
-  looks only half as far from it as the parts are from each other);
+- **most of the others dance the same thing**: the largest set of them whose limbs are within
+  `max_spread_deg` of each other (pairwise, over `smooth_s`) is more than half of them. One other
+  member soloing doesn't break it; split parts (2/2, 3/3) do. (Not "angle to their median": in a
+  3/3 split the median falls between the parts and everyone looks only half as far from it as
+  the parts are from each other.);
 - **i dances what they dance**: i's limbs are within `max_own_deg` of the others' median (over the
   longer `own_smooth_s`, so a brief mistake doesn't count, a different part does);
 - **i is in the same state**: moving while most of them move, still while they are still (moving =
@@ -79,17 +80,20 @@ def together(u: np.ndarray, w: np.ndarray, speed: np.ndarray, fps: float, cfg) -
     with np.errstate(invalid="ignore"):
         moving = np.where(seen, (_smooth(speed, window) > cfg.moving_speed).astype(float), np.nan)
     state = np.nan_to_num(moving) > 0.5
-    pair_angle = {(a, b): _limb_angle(u[a], w[a], u[b], w[b]) for a in range(members) for b in range(a + 1, members)}
+    close = np.eye(members, dtype=bool)[:, :, None].repeat(frames, axis=2)  # (M, M, T) within max_spread of each other
+    for a in range(members):
+        for b in range(a + 1, members):
+            near = np.nan_to_num(_smooth(_limb_angle(u[a], w[a], u[b], w[b]), window), nan=np.inf) <= cfg.max_spread_deg
+            close[a, b] = close[b, a] = near
     out = np.zeros((members, frames), dtype=bool)
     for i in range(members):
         others = [j for j in range(members) if j != i]
-        pairs = [angle for (a, b), angle in pair_angle.items() if i not in (a, b)]
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
-            # With a single other member there is nobody for them to disagree with.
-            spread = np.nanmedian(np.stack(pairs), axis=0) if pairs else np.zeros(frames)
             others_moving = np.nanmean(moving[others], axis=0)
-        agree = np.nan_to_num(_smooth(spread, window), nan=np.inf) <= cfg.max_spread_deg
+        # Largest set of others close to one of them (a member and everyone near them), as a share.
+        biggest = close[np.ix_(others, others)].sum(axis=1).max(axis=0)
+        agree = biggest > len(others) / 2
         own = np.nan_to_num(_smooth(_limb_angle(u[i], w[i], ref[i], ref_w[i]), own_window), nan=np.inf) <= cfg.max_own_deg
         their_state = np.nan_to_num(others_moving, nan=0.0) >= cfg.min_moving_share  # already smoothed, like state[i]
         enough = seen[others].sum(axis=0) >= min(cfg.min_others, len(others))

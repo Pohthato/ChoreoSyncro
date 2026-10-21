@@ -24,6 +24,7 @@ import numpy as np
 from ..config import Config
 from ..features.bones import BONE_NAMES, mirror_name
 from ..sync.consensus import nanmedian_first_axis
+from ..sync.unison import apart_intervals
 from .ghost import ghost_keypoints
 
 VIEWER_DIR = Path(__file__).resolve().parent / "viewer"
@@ -160,6 +161,9 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
         "conf": _b64(np.where(conf > 0, np.clip(np.round(conf * 255), 1, 255), 0).astype(np.uint8)),
         "halo": _b64(_halo(sync["bone_shape_deg"], mirrored, config.sync.shape_threshold_deg)),
         "heights": _heights(xy, conf),
+        # Dancing together with the group (sync/unison.py): the ghost is drawn only there.
+        "together": _b64(sync["together"].astype(np.uint8)) if "together" in sync else _b64(np.ones((members, n_frames), np.uint8)),
+        "apart": apart_intervals(sync["together"], float(kp["fps"]), seen=(conf > 0).sum(axis=-1) >= 4) if "together" in sync else [[] for _ in range(members)],
         "moments": [{"worst_timing_moments": m["overall"]["worst_timing_moments"], **pose}
                     for m, pose in zip(summary["members"], pose_moments(sync["bone_shape_deg"], mirrored, float(kp["fps"]), config.sync.shape_threshold_deg))],
     }

@@ -190,3 +190,25 @@ def test_pose_moments_leave_out_likely_label_swaps(results, tmp_path):
     assert m0["likely_label_swaps"] >= 1
     assert m1["worst_shape_moments"] and m1["worst_shape_moments"][0]["bone"] == "right_shin"
     assert all(m["error_deg"] < 90 for member in data["moments"] for m in member["worst_shape_moments"])
+
+
+def test_viewer_marks_where_the_group_isnt_together(tmp_path):
+    import base64
+
+    from syncscore.sync.summary import summarize, write_summary
+    from syncscore.synth.generate import Interval
+
+    config = load_config()
+    group = make_group(GroupSpec(n_members=5, duration_s=20, fps=30, solos=[Interval(2, 8.0, 14.0)], seed=71))
+    result, xy, conf = analyze_keypoints(group.keypoints, group.conf, group.fps, config, names=group.names)
+    result.save(tmp_path / "sync_result.npz")
+    np.savez_compressed(tmp_path / "keypoints_smoothed.npz", xy=xy.astype(np.float32), conf=conf.astype(np.float32), fps=group.fps, names=np.array(group.names))
+    write_summary(summarize(result, config), tmp_path)
+    data = viewer_data(tmp_path, config, (1920, 1080), None)
+    flags = np.frombuffer(base64.b64decode(data["together"]), dtype=np.uint8).reshape(5, data["n_frames"])
+    solo = (group.times >= 9.0) & (group.times < 13.0)
+    assert flags[2, solo].mean() < 0.1 and flags[0, ~solo].mean() > 0.9
+    assert len(data["apart"][2]) == 1
+    start, end = data["apart"][2][0]
+    assert abs(start - 8.0) < 1.0 and abs(end - 14.0) < 1.0
+    assert data["apart"][0] == []

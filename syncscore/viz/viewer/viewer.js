@@ -14,6 +14,8 @@
   const GH = C.decodeInt16(D.ghost, 4);
   const CF = C.decodeUint8(D.conf);
   const HALO = C.decodeUint16(D.halo);
+  const TOGETHER = C.decodeUint8(D.together);  // 1 where the member dances together with the group
+  const together = (member, f) => TOGETHER[member * T + f] === 1;
   const DURATION = T / FPS;
 
   const state = {
@@ -140,7 +142,8 @@
     drawSegments(g, segs.filter((s) => s.halo), map, "#e87ba4", 9 * unit, 0.85);
     drawSegments(g, segs, map, status.color, 3.5 * unit, 1);
     // The ghost goes on top, thin: along a limb it reads as "matching", beside it as the gap.
-    if (state.ghost) drawSegments(g, C.skeletonSegments(C.pointsAt(GH, T, member, f), null, 0, 0), map, "#ffffff", 1.6 * unit, 0.8);
+    // Only while the group dances together: during a solo or split parts "the group" is no reference.
+    if (state.ghost && together(member, f)) drawSegments(g, C.skeletonSegments(C.pointsAt(GH, T, member, f), null, 0, 0), map, "#ffffff", 1.6 * unit, 0.8);
     if (conf[0] >= MIN_CONF && Number.isFinite(pts[0][0])) {
       g.fillStyle = status.color;
       g.beginPath();
@@ -194,6 +197,11 @@
       ctx.font = `${14 * unit}px ${getComputedStyle(document.body).fontFamily}`;
       ctx.textAlign = "left";
       ctx.fillText(`${D.names[state.member]}: not seen`, 14 * unit, 26 * unit);
+    } else if (state.view === "dancer" && !together(state.member, f)) {
+      ctx.fillStyle = "#c3c2b7";
+      ctx.font = `${14 * unit}px ${getComputedStyle(document.body).fontFamily}`;
+      ctx.textAlign = "left";
+      ctx.fillText("No group reference here (solo or different parts)", 14 * unit, 26 * unit);
     }
     if (state.lineup) drawLineup(f, t);
     updatePanels(t);
@@ -224,7 +232,7 @@
       const segs = C.skeletonSegments(pts, conf, MIN_CONF, HALO[i * T + f]);
       drawSegments(lctx, segs.filter((s) => s.halo), map, "#e87ba4", 7 * unit, 0.85);
       drawSegments(lctx, segs, map, status.color, 3 * unit, 1);
-      if (state.ghost) drawSegments(lctx, C.skeletonSegments(C.pointsAt(GH, T, i, f), null, 0, 0), map, "#ffffff", 1.4 * unit, 0.8);
+      if (state.ghost && together(i, f)) drawSegments(lctx, C.skeletonSegments(C.pointsAt(GH, T, i, f), null, 0, 0), map, "#ffffff", 1.4 * unit, 0.8);
     }
   }
 
@@ -239,7 +247,10 @@
     if (state.view === "group") {
       D.names.forEach((name, i) => {
         const s = statusAt(i, t);
-        nowItems[i].querySelector(".status").innerHTML = `<span class="chip" style="--c:${s.color}"></span>${s.text}`;
+        const f = C.frameAt(t, FPS, T);
+        const apart = !together(i, f) && C.followBox(C.pointsAt(KP, T, i, f), C.confAt(CF, T, i, f), MIN_CONF, null, 0);
+        nowItems[i].querySelector(".status").innerHTML =
+          `<span class="chip" style="--c:${s.color}"></span>${s.text}${apart ? " <small>(solo or different part)</small>" : ""}`;
       });
     } else {
       $("dancer-now").textContent = `This section: ${statusAt(state.member, t).text}`;
@@ -290,6 +301,15 @@
       const r = track.getBoundingClientRect();
       seek(C.trackTime(e.clientX, r.left, r.width, DURATION));
     });
+    // A thin bar under the row where this member isn't dancing with the group.
+    for (const [a, b] of D.apart[i]) {
+      const bar = document.createElement("span");
+      bar.className = "apart";
+      bar.style.left = `${(100 * a) / DURATION}%`;
+      bar.style.width = `${(100 * (b - a)) / DURATION}%`;
+      bar.title = `${name}, ${clockText(a)}-${clockText(b)}: not dancing with the group (solo or different parts)`;
+      track.appendChild(bar);
+    }
     timeline.appendChild(row);
     return row;
   });

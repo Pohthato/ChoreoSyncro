@@ -130,6 +130,8 @@ button:focus-visible, select:focus-visible, .tape:focus-visible, .moments button
   background: var(--c, var(--none));
 }
 .tape.none { background: repeating-linear-gradient(135deg, #cfd3d8 0 4px, #dfe2e6 4px 8px); }
+.apart { position: absolute; bottom: -5px; height: 3px; background: var(--ink-2); border-radius: 1px; pointer-events: auto; }
+.chip.apart-chip { height: 3px; background: var(--ink-2); }
 .cursor { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--cue); pointer-events: none; }
 .selected .name { color: var(--ink); font-weight: 700; }
 
