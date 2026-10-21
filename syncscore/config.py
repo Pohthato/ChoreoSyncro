@@ -74,6 +74,17 @@ class SectionsConfig:
 
 
 @dataclass
+class UnisonConfig:
+    max_spread_deg: float = 25.0    # the other members agree: median limb angle between pairs of them, over smooth_s
+    max_own_deg: float = 40.0       # this member dances what they dance: limb angle to their median, over own_smooth_s
+    moving_speed: float = 0.3       # "moving" = average speed over smooth_s above this x the member's usual moving speed
+    min_moving_share: float = 0.5   # the others are moving when at least this share of them is
+    smooth_s: float = 1.0
+    own_smooth_s: float = 2.0
+    min_others: int = 2
+
+
+@dataclass
 class HitsConfig:
     prominence: float = 1.5      # a group hit rises this far above its surroundings (x a member's typical speed)
     max_offset_ms: float = 400.0 # search range for the member's matching peak
@@ -99,6 +110,7 @@ class Config:
     sync: SyncConfig = field(default_factory=SyncConfig)
     sections: SectionsConfig = field(default_factory=SectionsConfig)
     hits: HitsConfig = field(default_factory=HitsConfig)
+    unison: UnisonConfig = field(default_factory=UnisonConfig)
     render: RenderConfig = field(default_factory=RenderConfig)
 
 

@@ -48,6 +48,16 @@ sections:
   min_blocks: 5               # ...or fewer independent (non-overlapping) stretches: the interval would be meaningless
   max_ci_ms: 50               # a 90% interval wider than this = no reading
 
+unison:
+  # When the group dances together (syncscore/sync/unison.py). Outside it: no ghost, no group timing.
+  max_spread_deg: 25          # the other members agree on their pose: median limb angle between pairs of them
+  max_own_deg: 40             # this member dances what they dance (over own_smooth_s, so brief mistakes don't count)
+  moving_speed: 0.3           # "moving" = average speed over smooth_s above this x the member's usual moving speed
+  min_moving_share: 0.5       # the others count as moving when at least half of them are
+  smooth_s: 1.0
+  own_smooth_s: 2.0
+  min_others: 2
+
 hits:
   # Timing at the group's big simultaneous movements (syncscore/sync/hits.py). Scored by
   # `syncscore shift-test`; not used in the report (it added no reliable readings on the test
