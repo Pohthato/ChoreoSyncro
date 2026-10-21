@@ -1,7 +1,7 @@
 import numpy as np
 
 from syncscore.features.bones import BONE_NAMES, angle_between, bone_directions
-from syncscore.synth.generate import GroupSpec, LimbError, make_group
+from syncscore.synth.generate import GroupSpec, Interval, LimbError, make_group
 
 
 def test_shapes_and_truth():
@@ -74,3 +74,47 @@ def test_glitches_swap_labels_or_move_a_wrist_at_full_confidence():
     changed = ~np.isclose(clean.keypoints[0], glitchy.keypoints[0]).all(axis=(1, 2))
     assert 0.02 < changed.mean() < 0.15
     assert (glitchy.conf[0] > 0.8).all()  # glitches are not marked as uncertain
+
+
+# --- solos and split parts ---
+
+import hashlib  # noqa: E402
+
+from syncscore.features.bones import BONE_NAMES, angle_between, bone_directions  # noqa: E402
+
+_LIMBS = [BONE_NAMES.index(n) for n in ("left_upper_arm", "left_forearm", "right_upper_arm", "right_forearm",
+                                        "left_thigh", "left_shin", "right_thigh", "right_shin")]
+
+
+def _limb_angle(group, a, b, frames):
+    ua = bone_directions(group.keypoints[a], group.conf[a]).u[frames][:, _LIMBS]
+    ub = bone_directions(group.keypoints[b], group.conf[b]).u[frames][:, _LIMBS]
+    return float(np.nanmedian(angle_between(ua, ub)))
+
+
+def test_in_a_solo_the_others_hold_still():
+    group = make_group(GroupSpec(n_members=5, duration_s=20, fps=30, solos=[Interval(2, 8.0, 14.0)], seed=61))
+    inside = (group.times > 8.2) & (group.times < 13.8)
+    step = np.linalg.norm(np.diff(group.keypoints, axis=1), axis=-1).max(axis=-1)  # (M, T-1) largest joint move per frame
+    for member in (0, 1, 3, 4):
+        assert step[member, inside[1:]].max() < 0.5
+    assert step[2, inside[1:]].max() > 5.0
+
+
+def test_a_part_dances_other_moves():
+    group = make_group(GroupSpec(n_members=5, duration_s=20, fps=30, parts=[([3, 4], 8.0, 14.0)], seed=62))
+    inside = np.flatnonzero((group.times > 8.5) & (group.times < 13.5))
+    assert _limb_angle(group, 3, 4, inside) < 3.0
+    assert _limb_angle(group, 0, 3, inside) > 10.0
+    before = np.flatnonzero(group.times < 7.5)
+    assert _limb_angle(group, 0, 3, before) < 3.0
+
+
+def test_existing_seeds_are_unchanged():
+    # Checksums of make_group output taken before solos and parts existed.
+    specs = (GroupSpec(n_members=4, duration_s=6, noise=0.01, style_deg=3.0, seed=7),
+             GroupSpec(n_members=3, duration_s=5, offsets_ms=[0, 40, -30], dropout=0.05, occlusions=[Interval(1, 1.0, 2.0)], seed=11))
+    expected = ("a63a7482a50fc9f124fe4f86e967eeb6e420863a", "0b38b59708539389238ef05153b484f0584a0f81")
+    for spec, digest in zip(specs, expected):
+        g = make_group(spec)
+        assert hashlib.sha1(np.nan_to_num(g.keypoints).round(6).tobytes() + g.conf.round(6).tobytes()).hexdigest() == digest

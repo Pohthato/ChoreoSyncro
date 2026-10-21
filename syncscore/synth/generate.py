@@ -94,6 +94,8 @@ class GroupSpec:
     occlusions: list = field(default_factory=list)  # Interval: member not visible at all
     cropped: list = field(default_factory=list)     # Interval: knees and ankles cut off by the frame edge
     loops: list = field(default_factory=list)       # (t0, t1, step_s, n_poses): a fast repeated groove
+    solos: list = field(default_factory=list)       # Interval: that member keeps dancing, everyone else holds still
+    parts: list = field(default_factory=list)       # ([members], t0, t1): those members dance other moves (one shared set)
     same_body: bool = False          # every member gets member 0's body (position still differs)
     image_size: tuple = (1920, 1080)
     seed: int = 0
@@ -287,6 +289,8 @@ def make_group(spec: GroupSpec) -> SyntheticGroup:
     width, height = spec.image_size
     times = np.arange(int(round(spec.duration_s * spec.fps))) / spec.fps
     choreography = make_choreography(spec.duration_s, spec.bpm, rng, loops=spec.loops)
+    # A second choreography for split parts, from its own generator so existing seeds are unchanged.
+    other = make_choreography(spec.duration_s, spec.bpm, np.random.default_rng(spec.seed + 1000)) if spec.parts else None
     offsets = spec.offsets_ms if spec.offsets_ms is not None else [0.0] * m
     mirrored = np.array(spec.mirrored if spec.mirrored is not None else [False] * m, dtype=bool)
 
@@ -306,7 +310,17 @@ def make_group(spec: GroupSpec) -> SyntheticGroup:
     for i in range(m):
         offsets_ms[i] = _curve(offsets[i], times)
         local = times - offsets_ms[i] / 1000.0  # a late member is at an earlier point of the choreography
-        values = choreography.angles(local) + _style(rng, times, spec.style_deg)
+        style = _style(rng, times, spec.style_deg)
+        values = choreography.angles(local) + style
+        for members, t0, t1 in spec.parts:
+            if i in members:
+                part = (times >= t0) & (times < t1)
+                values[part] = other.angles(local[part]) + style[part]
+        for solo in spec.solos:
+            if solo.member != i:  # everyone but the soloist holds the pose they had when the solo began
+                still = (times >= solo.t0) & (times < solo.t1)
+                if still.any():
+                    values[still] = values[np.flatnonzero(still)[0]]
         for error in spec.limb_errors:
             if error.member == i:
                 values[:, _J[error.joint]] += error.degrees * _envelope(times, error.t0, error.t1, error.ramp_s)
