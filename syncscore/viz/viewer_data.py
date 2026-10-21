@@ -22,9 +22,11 @@ from pathlib import Path
 import numpy as np
 
 from ..config import Config
-from ..features.bones import BONE_NAMES, mirror_name
+from ..features.bones import BONE_NAMES, bone_directions, mirror_name
 from ..sync.consensus import nanmedian_first_axis
-from ..sync.unison import apart_intervals
+from ..sync.landings import clean_landings, landing_lock
+from ..sync.timing import velocity
+from ..sync.unison import apart_intervals, member_speed
 from .ghost import ghost_keypoints
 
 VIEWER_DIR = Path(__file__).resolve().parent / "viewer"
@@ -136,7 +138,37 @@ def _heights(xy: np.ndarray, conf: np.ndarray) -> list:
     return out
 
 
-def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], video: str | None) -> dict:
+def _beat(video: Path | None, xy: np.ndarray, conf: np.ndarray, fps: float, config: Config) -> tuple[dict | None, str, list | None, dict | None]:
+    """The music's beat grid from the video's soundtrack and every member's clean landings against
+    it: (beats, note, landings, landing_lock). Only a steady grid is used; the note says why there is
+    none. `landing_lock` says whether this video's landings line up with the beat at all."""
+    import importlib.util
+
+    from ..audio.beats import beat_grid, load_audio
+
+    if video is None:
+        return None, "No beat: no video was given, so there is no soundtrack.", None, None
+    if importlib.util.find_spec("av") is None:
+        return None, "No beat: reading the soundtrack needs PyAV (pip install av).", None, None
+    grid = beat_grid(load_audio(Path(video)))
+    if grid is None:
+        return None, "No beat: the video has no usable soundtrack.", None, None
+    beats = {"tempo_bpm": round(grid.tempo_bpm, 2), "half_beat_s": grid.half_beat_s, "beat_phase_s": grid.beat_phase_s, "steady": grid.steady}
+    if not grid.steady:
+        return beats, "No beat grid: the tempo wasn't steady enough to draw one.", None, None
+    landings = []
+    for i in range(len(xy)):
+        f = bone_directions(xy[i], conf[i], config.pose.min_keypoint_conf)
+        v, vw = velocity(f.u, f.weight, fps, config.sync.max_bone_speed_deg_s)
+        times = clean_landings(member_speed(v, vw), fps, config.beat) / fps
+        landings.append([{"time_s": round(float(t), 3), "offset_ms": round(float(o), 1)} for t, o in zip(times, grid.offset_ms(times))])
+    note = (f"Beat: {grid.tempo_bpm:.0f} BPM from the soundtrack. A delay between sound and picture shifts every dancer "
+            "equally, and a move that lands between beats on purpose reads as off the beat.")
+    lock = landing_lock(np.array([x["offset_ms"] for member in landings for x in member]), grid.half_beat_s * 1000.0)
+    return beats, note, landings, lock
+
+
+def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], video: Path | None) -> dict:
     result_dir = Path(result_dir)
     kp = np.load(result_dir / "keypoints_smoothed.npz")
     sync = dict(np.load(result_dir / "sync_result.npz"))
@@ -153,7 +185,7 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
         "version": 1, "fps": float(kp["fps"]), "n_frames": int(n_frames), "image_size": [int(v) for v in image_size],
         "names": [str(n) for n in kp["names"]],
         "in_sync_ms": config.render.in_sync_ms, "off_sync_ms": config.render.off_sync_ms,
-        "shape_threshold_deg": config.sync.shape_threshold_deg, "video": video,
+        "shape_threshold_deg": config.sync.shape_threshold_deg, "video": video_url(video) if video else None,
         "sections": [{"name": s["name"], "start_s": s["start_s"], "end_s": s["end_s"]} for s in summary["sections"]],
         "section_status": status,
         "keypoints": encode_int16(xy), "ghost": encode_int16(ghost),
@@ -164,6 +196,7 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
         # Dancing together with the group (sync/unison.py): the ghost is drawn only there.
         "together": _b64(sync["together"].astype(np.uint8)) if "together" in sync else _b64(np.ones((members, n_frames), np.uint8)),
         "apart": apart_intervals(sync["together"], float(kp["fps"]), seen=(conf > 0).sum(axis=-1) >= 4) if "together" in sync else [[] for _ in range(members)],
+        **dict(zip(("beats", "beat_note", "landings", "landing_lock"), _beat(video, xy, conf, float(kp["fps"]), config))),
         "moments": [{"worst_timing_moments": m["overall"]["worst_timing_moments"], **pose}
                     for m, pose in zip(summary["members"], pose_moments(sync["bone_shape_deg"], mirrored, float(kp["fps"]), config.sync.shape_threshold_deg))],
     }
@@ -173,7 +206,7 @@ def write_viewer(result_dir: Path, out_dir: Path, config: Config, image_size: tu
     """Write the viewer folder: the data script plus the page files. Returns index.html's path."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    data = viewer_data(result_dir, config, image_size, video_url(video) if video else None)
+    data = viewer_data(result_dir, config, image_size, video)
     (out_dir / "viewer_data.js").write_text("window.SYNCSCORE = " + json.dumps(data, separators=(",", ":")) + ";\n", encoding="utf-8")
     if VIEWER_DIR.is_dir():
         for path in VIEWER_DIR.iterdir():

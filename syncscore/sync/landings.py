@@ -47,3 +47,28 @@ def clean_landings(speed: np.ndarray, fps: float, cfg) -> np.ndarray:
         j = p + 1 + int(np.argmax(s[p + 1:q + 1] <= level))
         out.append(j - 1 + (s[j - 1] - level) / (s[j - 1] - s[j]))
     return np.array(out)
+
+
+MIN_LOCK_LANDINGS = 20
+LOCK_P = 0.01
+LOCK_MARGIN = 0.15  # share within 50 ms must beat chance by this much
+
+
+def landing_lock(offsets_ms: np.ndarray, half_beat_ms: float) -> dict:
+    """Do this video's landings line up with the beat at all?
+
+    On the BTS clip they don't: 39 clean landings, 38% within 50 ms of a half beat where chance is
+    40%, spread over the whole +-125 ms (Rayleigh p 0.13). Colouring each landing "on" or "off" the
+    beat would then be a verdict the data can't support. So the viewer colours them only when the
+    whole video's landings demonstrably lock: at least MIN_LOCK_LANDINGS, clustered on the
+    half-beat circle (Rayleigh p below LOCK_P), and within 50 ms clearly more often than chance."""
+    off = np.asarray(offsets_ms, dtype=float)
+    n = int(off.size)
+    chance = min(1.0, 100.0 / half_beat_ms)  # +-50 ms out of one half beat
+    if n == 0:
+        return {"n": 0, "within_50ms": None, "chance": chance, "p": None, "locked": False}
+    resultant = abs(np.mean(np.exp(2j * np.pi * off / half_beat_ms)))
+    p = float(np.exp(-n * resultant ** 2))  # Rayleigh test, large-sample form
+    within = float(np.mean(np.abs(off) <= 50.0))
+    locked = n >= MIN_LOCK_LANDINGS and p < LOCK_P and within >= chance + LOCK_MARGIN
+    return {"n": n, "within_50ms": round(within, 3), "chance": round(chance, 3), "p": round(p, 4), "locked": bool(locked)}

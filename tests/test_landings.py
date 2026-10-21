@@ -56,3 +56,25 @@ def test_continuous_motion_has_no_landings():
 def test_offsets_wrap_at_half_a_half_beat():
     grid = BeatGrid(tempo_bpm=120.0, half_beat_s=0.25, beat_phase_s=0.0, steady=True, beat_share=1.0)
     assert np.allclose(grid.offset_ms(np.array([10.130, 10.020, 10.250 - 0.030])), [-120.0, 20.0, -30.0])
+
+
+def test_landings_spread_over_the_beat_are_not_locked():
+    from syncscore.sync.landings import landing_lock
+
+    rng = np.random.default_rng(3)
+    lock = landing_lock(rng.uniform(-125, 125, 60), half_beat_ms=250.0)
+    assert not lock["locked"] and lock["n"] == 60 and abs(lock["chance"] - 0.4) < 1e-9
+
+
+def test_landings_bunched_near_the_beat_are_locked():
+    from syncscore.sync.landings import landing_lock
+
+    rng = np.random.default_rng(4)
+    lock = landing_lock(rng.normal(10, 20, 40), half_beat_ms=250.0)
+    assert lock["locked"] and lock["within_50ms"] > 0.8 and lock["p"] < 0.01
+
+
+def test_too_few_landings_are_never_locked():
+    from syncscore.sync.landings import landing_lock
+
+    assert not landing_lock(np.zeros(10), half_beat_ms=250.0)["locked"]

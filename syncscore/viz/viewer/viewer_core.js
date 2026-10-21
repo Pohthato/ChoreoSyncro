@@ -168,9 +168,37 @@
     return t >= last ? { time: last, ended: true } : { time: t, ended: false };
   }
 
+  // The beat. `beats` = { tempo_bpm, half_beat_s, beat_phase_s, steady } from the soundtrack.
+  function beatTicks(t0, t1, beats) {
+    const hb = beats.half_beat_s;
+    const out = [];
+    for (let k = Math.ceil((t0 - beats.beat_phase_s) / hb - 1e-9); beats.beat_phase_s + k * hb < t1; k++) {
+      out.push({ t: beats.beat_phase_s + k * hb, on: ((k % 2) + 2) % 2 === 0 });
+    }
+    return out;
+  }
+
+  // 1 on a beat, fading with `decayS` until the next one (off-beats don't pulse).
+  function pulseAt(t, beats, decayS) {
+    const period = 2 * beats.half_beat_s;
+    const since = (((t - beats.beat_phase_s) % period) + period) % period;
+    return Math.exp(-since / decayS);
+  }
+
+  function landingStatus(offsetMs, inSyncMs) {
+    const ms = Math.round(Math.abs(offsetMs));
+    if (Math.abs(offsetMs) <= inSyncMs) return { color: COLORS.good, text: `on the beat (${signedMs(offsetMs)})` };
+    return { color: COLORS.warning, text: `${ms} ms ${offsetMs > 0 ? "after" : "before"} the beat` };
+  }
+
+  function landingOffsetText(offsetMs) {
+    const ms = Math.round(Math.abs(offsetMs));
+    return ms === 0 ? "on a half beat" : `${ms} ms ${offsetMs > 0 ? "after" : "before"} the nearest half beat`;
+  }
+
   const SyncCore = {
     BONES, TORSO_SIDES, COLORS, decodeInt16, decodeUint8, decodeUint16, frameAt, sectionAt, signedMs, statusOf,
-    pointsAt, confAt, skeletonSegments, followBox, nearestBox, trackTime, lineupTransform, wrapLoop, advanceClock,
+    pointsAt, confAt, skeletonSegments, followBox, nearestBox, trackTime, beatTicks, pulseAt, landingStatus, landingOffsetText, lineupTransform, wrapLoop, advanceClock,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = SyncCore;
   else root.SyncCore = SyncCore;

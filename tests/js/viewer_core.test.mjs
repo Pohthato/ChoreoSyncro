@@ -142,3 +142,32 @@ test("lineupTransform keeps a member's own scale, so a squat stays low", () => {
   const top = (pts, t) => pts[0][1] * t.scale + t.dy;
   assert.ok(400 - top(squat, b) < 0.8 * (400 - top(standing, a)));
 });
+
+const BEATS = { tempo_bpm: 120, half_beat_s: 0.25, beat_phase_s: 0.1, steady: true };
+
+test("beatTicks lists on- and off-beats in a window", () => {
+  const ticks = core.beatTicks(10.0, 11.0, BEATS);
+  assert.deepEqual(ticks.map((k) => Math.round(k.t * 1000)), [10100, 10350, 10600, 10850]);
+  assert.deepEqual(ticks.map((k) => k.on), [true, false, true, false]);
+});
+
+test("pulseAt peaks on the beat and fades", () => {
+  assert.ok(Math.abs(core.pulseAt(10.1, BEATS, 0.12) - 1) < 1e-9);
+  assert.ok(core.pulseAt(10.2, BEATS, 0.12) < 0.5);
+  assert.ok(core.pulseAt(10.59, BEATS, 0.12) < 0.05);
+  assert.ok(Math.abs(core.pulseAt(10.35, BEATS, 0.12) - Math.exp(-0.25 / 0.12)) < 1e-9); // an off-beat doesn't pulse
+});
+
+test("landingStatus uses the in-sync band", () => {
+  assert.equal(core.landingStatus(12, 35).color, "#0ca30c");
+  assert.equal(core.landingStatus(12, 35).text, "on the beat (+12 ms)");
+  assert.equal(core.landingStatus(-48, 35).text, "48 ms before the beat");
+  assert.equal(core.landingStatus(60, 35).text, "60 ms after the beat");
+  assert.equal(core.landingStatus(60, 35).color, "#fab219");
+});
+
+test("landingOffsetText states the offset without a verdict", () => {
+  assert.equal(core.landingOffsetText(96), "96 ms after the nearest half beat");
+  assert.equal(core.landingOffsetText(-43), "43 ms before the nearest half beat");
+  assert.equal(core.landingOffsetText(0.3), "on a half beat");
+});

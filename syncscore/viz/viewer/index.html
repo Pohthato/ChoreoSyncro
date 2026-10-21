@@ -40,9 +40,12 @@
           <button id="show-video" type="button" aria-pressed="true">Video</button>
           <button id="show-ghost" type="button" aria-pressed="true">Ghost</button>
           <button id="show-lineup" type="button" aria-pressed="false">Lineup</button>
+          <button id="sound" type="button" aria-pressed="false">Sound</button>
         </span>
         <output id="clock" class="clock">0:00.00</output>
       </div>
+      <canvas id="beat-lane" class="beat-lane" hidden aria-label="Beat lane: beats and each dancer's clean landings around now"></canvas>
+      <p id="beat-note" class="hint beat-note"></p>
       <canvas id="lineup" class="lineup" hidden></canvas>
     </section>
 
@@ -59,6 +62,9 @@
         <h3>Held pose differences</h3>
         <p class="hint">A bone held at least as far from the group as the pink-limb rule for half a second. It could be technique, style or a different part of the choreography.</p>
         <ol id="shape-moments" class="moments"></ol>
+        <h3>Clean landings against the beat</h3>
+        <p id="landing-summary" class="hint"></p>
+        <ol id="landing-list" class="moments"></ol>
       </div>
       <dl class="legend">
         <div><dt><span class="chip" style="--c:#0ca30c"></span>In sync</dt><dd id="legend-in"></dd></div>

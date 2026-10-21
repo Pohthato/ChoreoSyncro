@@ -16,6 +16,13 @@
   const HALO = C.decodeUint16(D.halo);
   const TOGETHER = C.decodeUint8(D.together);  // 1 where the member dances together with the group
   const together = (member, f) => TOGETHER[member * T + f] === 1;
+  // The beat, only from a steady grid; landings of clean big moves against it.
+  const BEATS = D.beats && D.beats.steady ? D.beats : null;
+  const LANDINGS = BEATS && D.landings ? D.landings : null;
+  // Colour landings "on"/"off" the beat only if this video's landings line up with the beat at all.
+  const LOCKED = !!(D.landing_lock && D.landing_lock.locked);
+  const landingColor = (offset) => (LOCKED ? C.landingStatus(offset, D.in_sync_ms).color : "#c3c2b7");
+  const landingText = (offset) => (LOCKED ? C.landingStatus(offset, D.in_sync_ms).text : C.landingOffsetText(offset));
   const DURATION = T / FPS;
 
   const state = {
@@ -203,8 +210,60 @@
       ctx.textAlign = "left";
       ctx.fillText("No group reference here (solo or different parts)", 14 * unit, 26 * unit);
     }
+    if (BEATS) {
+      // A pulse at the stage's top right on every beat.
+      const p = C.pulseAt(t, BEATS, 0.12);
+      ctx.globalAlpha = 0.25 + 0.75 * p;
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(view.w - 22 * unit, 22 * unit, (6 + 4 * p) * unit, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      drawBeatLane(t);
+    }
     if (state.lineup) drawLineup(f, t);
     updatePanels(t);
+  }
+
+  // 3 s around now: beat ticks (strong) and "and"s (light), each dancer's clean landings as dots.
+  const lane = $("beat-lane"), bctx = lane.getContext("2d");
+  const LANE_S = 1.5;
+  function drawBeatLane(t) {
+    const rows = state.view === "group" ? [...Array(M).keys()] : [state.member];
+    lane.style.height = `${24 + 22 * rows.length}px`;
+    const view = sizeCanvas(lane), unit = view.dpr;
+    const left = 46 * unit, width = view.w - left - 10 * unit;
+    const x = (time) => left + ((time - (t - LANE_S)) / (2 * LANE_S)) * width;
+    bctx.fillStyle = "#1a1a19";
+    bctx.fillRect(0, 0, view.w, view.h);
+    for (const tick of C.beatTicks(t - LANE_S, t + LANE_S, BEATS)) {
+      bctx.strokeStyle = tick.on ? "#c3c2b7" : "#52514e";
+      bctx.lineWidth = (tick.on ? 2 : 1) * unit;
+      bctx.beginPath();
+      bctx.moveTo(x(tick.t), 6 * unit);
+      bctx.lineTo(x(tick.t), view.h - 6 * unit);
+      bctx.stroke();
+    }
+    bctx.strokeStyle = "#2a78d6";
+    bctx.lineWidth = 2 * unit;
+    bctx.beginPath();
+    bctx.moveTo(x(t), 0);
+    bctx.lineTo(x(t), view.h);
+    bctx.stroke();
+    bctx.font = `${12 * unit}px ${getComputedStyle(document.body).fontFamily}`;
+    bctx.textAlign = "left";
+    rows.forEach((i, r) => {
+      const y = (18 + 22 * r + 11) * unit;
+      bctx.fillStyle = "#c3c2b7";
+      bctx.fillText(D.names[i], 8 * unit, y + 4 * unit);
+      for (const landing of LANDINGS ? LANDINGS[i] : []) {
+        if (landing.time_s < t - LANE_S || landing.time_s > t + LANE_S) continue;
+        bctx.fillStyle = landingColor(landing.offset_ms);
+        bctx.beginPath();
+        bctx.arc(x(landing.time_s), y, 5 * unit, 0, 2 * Math.PI);
+        bctx.fill();
+      }
+    });
   }
 
   function drawLineup(f, t) {
@@ -343,12 +402,35 @@
     if (!m.worst_shape_moments.length) shape.innerHTML = `<li class="empty">No pose difference held beyond the group.</li>`;
     m.worst_shape_moments.forEach((it) => moment(shape, it, (x) =>
       `${clockText(x.time_s)}  ${x.bone.replace(/_/g, " ")} ${Math.round(x.error_deg)}°<small>held ${Math.round(x.above_group_deg)}° beyond the group's usual difference</small>`));
+    fillLandings();
     if (m.likely_label_swaps) {
       const li = document.createElement("li");
       li.className = "empty";
       li.textContent = `Not listed: ${m.likely_label_swaps} s where a bone points 90° or more away from the group's. That is usually the pose model swapping left and right, or a turn; check those by eye.`;
       shape.appendChild(li);
     }
+  }
+
+  function fillLandings() {
+    const list = $("landing-list"), summary = $("landing-summary");
+    list.innerHTML = "";
+    if (!LANDINGS) {
+      summary.textContent = D.beat_note;
+      return;
+    }
+    const mine = LANDINGS[state.member];
+    const offsets = mine.map((x) => x.offset_ms).sort((a, b) => a - b);
+    const median = offsets.length ? offsets[Math.floor(offsets.length / 2)] : null;
+    const lock = D.landing_lock;
+    const caveat = LOCKED ? "" :
+      ` On this video the group's landings don't line up with the beat more than chance (${Math.round(100 * lock.within_50ms)}% within 50 ms;` +
+      ` ${Math.round(100 * lock.chance)}% by chance), so they aren't marked on or off the beat. Watch them with sound.`;
+    summary.textContent = (!mine.length
+      ? "No clean big moves (a fast move ending in stillness) to time against the beat."
+      : `${mine.length} clean landing${mine.length === 1 ? "" : "s"}` +
+        (LOCKED && mine.length >= 5 ? `; median ${landingText(median)}.` : ".")) + caveat;
+    [...mine].sort((a, b) => Math.abs(b.offset_ms) - Math.abs(a.offset_ms)).slice(0, 6)
+      .forEach((it) => moment(list, it, (x) => `${clockText(x.time_s)}  ${landingText(x.offset_ms)}`));
   }
 
   function setView(view, member) {
@@ -397,6 +479,15 @@
   toggle("show-video", "video");
   toggle("show-ghost", "ghost");
   toggle("show-lineup", "lineup");
+  // Sound: the video stays muted until asked (browsers only allow sound after a click anyway).
+  $("sound").addEventListener("click", () => {
+    if (!state.videoOk) return;
+    video.muted = !video.muted;
+    $("sound").setAttribute("aria-pressed", String(!video.muted));
+  });
+  $("sound").disabled = !D.video;
+  lane.hidden = !BEATS;
+  $("beat-note").textContent = D.beat_note;
   lineup.hidden = !state.lineup;
   document.addEventListener("keydown", (e) => {
     if (e.target.tagName === "SELECT") return;

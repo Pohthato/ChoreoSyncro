@@ -15,7 +15,8 @@ from syncscore.synth.generate import GroupSpec, LimbError, make_group
 from syncscore.viz.viewer_data import decode_int16, encode_int16, video_url, viewer_data, write_viewer
 
 KEYS = {"version", "fps", "n_frames", "image_size", "names", "in_sync_ms", "off_sync_ms", "shape_threshold_deg", "video",
-        "sections", "section_status", "keypoints", "ghost", "conf", "halo", "moments", "heights"}
+        "sections", "section_status", "keypoints", "ghost", "conf", "halo", "moments", "heights", "together", "apart",
+        "beats", "beat_note", "landings", "landing_lock"}
 
 
 @pytest.fixture(scope="module")
@@ -212,3 +213,52 @@ def test_viewer_marks_where_the_group_isnt_together(tmp_path):
     start, end = data["apart"][2][0]
     assert abs(start - 8.0) < 1.0 and abs(end - 14.0) < 1.0
     assert data["apart"][0] == []
+
+
+def _click_track_file(path, seconds=20, tempo=120.0, first=0.2, sr=22050):
+    """An audio-only mp4 with kicks on the beats and quieter hats on the off-beats."""
+    av = pytest.importorskip("av")
+    rng = np.random.default_rng(0)
+    x = rng.normal(0, 0.002, int(seconds * sr))
+    k = np.arange(int(0.08 * sr)) / sr
+    kick = np.sin(2 * np.pi * 60 * k) * np.exp(-k / 0.03)
+    kick[:60] += rng.normal(0, 0.8, 60)
+    for t in np.arange(first, seconds - 0.1, 60 / tempo):
+        x[int(t * sr):int(t * sr) + kick.size] += kick
+    x = x.astype(np.float32)
+    with av.open(str(path), "w") as out:
+        stream = out.add_stream("aac", rate=sr)
+        for start in range(0, x.size, 1024):
+            frame = av.AudioFrame.from_ndarray(x[None, start:start + 1024], format="fltp", layout="mono")
+            frame.rate = sr
+            for packet in stream.encode(frame):
+                out.mux(packet)
+        for packet in stream.encode(None):
+            out.mux(packet)
+    return path
+
+
+def test_no_audio_means_no_beat_data(results, tmp_path):
+    import cv2
+
+    out, config, spec = results
+    data = viewer_data(out, config, spec.image_size, None)
+    assert data["beats"] is None and data["landings"] is None and "no video" in data["beat_note"]
+    silent = tmp_path / "silent.mp4"
+    writer = cv2.VideoWriter(str(silent), cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (32, 24))
+    for _ in range(30):
+        writer.write(np.zeros((24, 32, 3), np.uint8))
+    writer.release()
+    data = viewer_data(out, config, spec.image_size, silent)
+    assert data["beats"] is None and "soundtrack" in data["beat_note"]
+
+
+def test_beat_data_for_a_click_track_video(results, tmp_path):
+    out, config, spec = results
+    video = _click_track_file(tmp_path / "clicks.mp4")
+    data = viewer_data(out, config, spec.image_size, video)
+    assert data["beats"]["steady"] and abs(data["beats"]["tempo_bpm"] - 120.0) < 0.5
+    assert isinstance(data["landings"], list) and len(data["landings"]) == 3
+    assert all(abs(x["offset_ms"]) <= 125 for member in data["landings"] for x in member)
+    assert set(data["landing_lock"]) >= {"n", "within_50ms", "chance", "p", "locked"}
+    assert data["video"] == video_url(video)
