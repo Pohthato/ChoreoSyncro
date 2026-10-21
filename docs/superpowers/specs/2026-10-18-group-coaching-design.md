@@ -124,3 +124,31 @@ Definitions, against the group's median member:
 
 Four separate plans, built in order 1 → 2 → 3 → 4, each shipping something usable on its own.
 Each is weeks, not a session. This document is the shared reference; each plan cites it.
+
+## Part 2b: the beat, and dancing together (decided 2026-10-21)
+
+Feedback after using the viewer: most sections say "no reading", the beat of the music should be
+the reference for an individual, and the ghost makes no sense during a solo.
+
+**Tested before deciding** (BTS clip, 2D pose, 30 fps): the song's beat grid is found exactly
+(120.0 BPM; a half-beat grid every 250 ms holds for the whole song; a beat tracker alone flips
+between beat and off-beat). Dancers' movements barely lock to it: landings of all moves fall
+within 50 ms of a half beat 39% of the time (40% by chance), move starts 43%, wrist stops 38%;
+the beat-frequency pulse in the motion is 1.1x background; motion vs the music's accents
+correlates at r = 0.07. Only big moves out of stillness lock somewhat (55%, about 10 per dancer
+in 3:50). So per-dancer, per-section timing against the beat would give *fewer* readings than
+the group method on this footage. Decided instead:
+
+1. **Dancing together.** At each moment, member i has a group reference only when the other
+   members agree on their pose and i is in the same state as them (moving while they move, still
+   while they are still). A solo (i moves, the others hold) and split parts (the others disagree)
+   both fail. Where it fails: no ghost, and no group timing for i (those windows are not used).
+2. **The beat in the viewer.** The beat grid from the video's soundtrack (PyAV to decode, our own
+   onset/tempo/grid code), shown as a lane of beat and off-beat ticks around the current time,
+   a pulse on each beat, a sound toggle, and each dancer's landings of clean big moves marked
+   against the beat (the user chose "the moment the move lands" as on the beat). Markers only,
+   no per-section beat score: the evidence doesn't support one on this footage.
+3. **Limits stated in the page:** the soundtrack's own sync with the picture shifts every dancer
+   equally; a deliberately syncopated landing reads as off the beat; landings are measured on the
+   half-beat grid, so anything more than 125 ms off reads as the neighbouring half beat.
+4. **Retest later:** per-dancer beat timing on hit-heavy choreography, 60 fps footage, or 3D.
