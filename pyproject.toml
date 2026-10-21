@@ -18,6 +18,8 @@ dependencies = [
 [project.optional-dependencies]
 # Pose extraction needs a video model; the alignment math and the synthetic benchmark do not.
 pose = ["ultralytics>=8.3"]
+# The beat in the viewer: reading the soundtrack.
+audio = ["av>=12"]
 dev = ["pytest>=8"]
 
 [project.scripts]
