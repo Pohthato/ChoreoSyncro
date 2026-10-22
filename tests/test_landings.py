@@ -78,3 +78,10 @@ def test_too_few_landings_are_never_locked():
     from syncscore.sync.landings import landing_lock
 
     assert not landing_lock(np.zeros(10), half_beat_ms=250.0)["locked"]
+
+
+def test_the_lock_says_how_many_landings_it_needs():
+    from syncscore.sync.landings import MIN_LOCK_LANDINGS, landing_lock
+
+    assert landing_lock(np.zeros(3), half_beat_ms=250.0)["min_n"] == MIN_LOCK_LANDINGS
+    assert landing_lock(np.zeros(0), half_beat_ms=250.0)["min_n"] == MIN_LOCK_LANDINGS

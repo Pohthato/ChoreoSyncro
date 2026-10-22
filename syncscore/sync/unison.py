@@ -17,14 +17,14 @@ Member i is together with the group at frame t when, over a short window:
 - **i is in the same state**: moving while most of them move, still while they are still (moving =
   average speed over `smooth_s` above `moving_speed` times the member's usual moving speed). A solo
   fails here, and a group holding a pose together passes;
-- i is seen, and at least `min_others` others are.
+- i is seen, and at least `min_others` others are (one in a duo, or in a trio with one hidden).
 
 Limb bones only (upper arms, forearms, thighs, shins): the torso and head barely move in most
 choreography and would dilute the comparison.
 
 **The limits scale with the footage.** In 2D, camera angle and personal styling put members' limbs
-apart even when they dance the same move: on the BTS clip pairs of members sat at a median of 17
-degrees, a quarter of them above 24. Fixed 25/30-degree limits then called members of the whole
+apart even when they dance the same move: on the BTS clip pairs of members sat at a median of 18
+degrees, a quarter of them above 25. Fixed 25/30-degree limits then called members of the whole
 group dancing the chorus together only 52-77% of the time (100% with these). So both limits are at
 least twice this clip's typical difference
 (the median over pairs, or over members, while most members are seen), with `max_spread_deg` and
@@ -115,9 +115,22 @@ def together(u: np.ndarray, w: np.ndarray, speed: np.ndarray, fps: float, cfg) -
         agree = near.sum(axis=1).max(axis=0) > seen_others.sum(axis=0) / 2
         own = np.nan_to_num(own_angle[i], nan=np.inf) <= max_own
         their_state = np.nan_to_num(others_moving, nan=0.0) >= cfg.min_moving_share  # already smoothed, like state[i]
-        enough = seen[others].sum(axis=0) >= min(cfg.min_others, len(others))
+        # A trio with one member hidden is a duo for that time, and a duo's one other is enough.
+        enough = seen[others].sum(axis=0) >= min(cfg.min_others, max(1, members - 2))
         out[i] = seen[i] & enough & agree & own & (state[i] == their_state)
     return out
+
+
+def firmly_together(flags: np.ndarray, fps: float, margin_s: float = 1.0) -> np.ndarray:
+    """(M, T) together and at least `margin_s` from any frame that isn't. The decision is made over
+    windows of 1-2 s, so it switches a fraction of a second after the dancing does; the first frames
+    of a different part, where poses differ most, would otherwise still count as together."""
+    from scipy.ndimage import binary_erosion
+
+    frames = int(round(margin_s * fps))
+    if frames < 1:
+        return flags.copy()
+    return binary_erosion(flags, structure=np.ones((1, 2 * frames + 1), dtype=bool), border_value=1)
 
 
 def apart_intervals(flags: np.ndarray, fps: float, min_s: float = 1.0, seen: np.ndarray | None = None) -> list:

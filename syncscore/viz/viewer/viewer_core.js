@@ -187,8 +187,8 @@
 
   function landingStatus(offsetMs, inSyncMs) {
     const ms = Math.round(Math.abs(offsetMs));
-    if (Math.abs(offsetMs) <= inSyncMs) return { color: COLORS.good, text: `on the beat (${signedMs(offsetMs)})` };
-    return { color: COLORS.warning, text: `${ms} ms ${offsetMs > 0 ? "after" : "before"} the beat` };
+    if (Math.abs(offsetMs) <= inSyncMs) return { color: COLORS.good, text: `on a half beat (${signedMs(offsetMs)})` };
+    return { color: COLORS.warning, text: `${ms} ms ${offsetMs > 0 ? "after" : "before"} the nearest half beat` };
   }
 
   function landingOffsetText(offsetMs) {
@@ -196,9 +196,36 @@
     return ms === 0 ? "on a half beat" : `${ms} ms ${offsetMs > 0 ? "after" : "before"} the nearest half beat`;
   }
 
+  // Why landings aren't coloured on or off the beat ("" when they are): only what the numbers say.
+  function landingCaveat(lock) {
+    if (lock.locked) return "";
+    if (!lock.n) return "This video has no clean landings to compare with the beat.";
+    if (lock.n < lock.min_n) {
+      return `Only ${lock.n} clean landing${lock.n === 1 ? "" : "s"} in this video: too few to tell whether they line up with the beat,` +
+        " so they aren't marked on or off it. Watch them with sound.";
+    }
+    return `On this video the group's landings don't clearly line up with the beat (${Math.round(100 * lock.within_50ms)}% within 50 ms` +
+      ` of a half beat; ${Math.round(100 * lock.chance)}% by chance), so they aren't marked on or off the beat. Watch them with sound.`;
+  }
+
+  // Every landing in time order: ranking them by distance from the beat would be a verdict.
+  function landingOrder(landings) {
+    return [...landings].sort((a, b) => a.time_s - b.time_s);
+  }
+
+  // The dot (any object with x, y) closest to the pointer, if within `radius`; null otherwise.
+  function nearestDot(dots, x, y, radius) {
+    let best = null, bestD = radius;
+    for (const dot of dots) {
+      const d = Math.hypot(dot.x - x, dot.y - y);
+      if (d <= bestD) { best = dot; bestD = d; }
+    }
+    return best;
+  }
+
   const SyncCore = {
     BONES, TORSO_SIDES, COLORS, decodeInt16, decodeUint8, decodeUint16, frameAt, sectionAt, signedMs, statusOf,
-    pointsAt, confAt, skeletonSegments, followBox, nearestBox, trackTime, beatTicks, pulseAt, landingStatus, landingOffsetText, lineupTransform, wrapLoop, advanceClock,
+    pointsAt, confAt, skeletonSegments, followBox, nearestBox, trackTime, beatTicks, pulseAt, landingStatus, landingOffsetText, landingCaveat, landingOrder, nearestDot, lineupTransform, wrapLoop, advanceClock,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = SyncCore;
   else root.SyncCore = SyncCore;

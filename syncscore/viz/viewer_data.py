@@ -26,7 +26,7 @@ from ..features.bones import BONE_NAMES, bone_directions, mirror_name
 from ..sync.consensus import nanmedian_first_axis
 from ..sync.landings import clean_landings, landing_lock
 from ..sync.timing import velocity
-from ..sync.unison import apart_intervals, member_speed
+from ..sync.unison import apart_intervals, firmly_together, member_speed
 from .ghost import ghost_keypoints
 
 VIEWER_DIR = Path(__file__).resolve().parent / "viewer"
@@ -84,9 +84,12 @@ def _halo(bone_deg: np.ndarray, mirrored: np.ndarray, threshold: float) -> np.nd
     return (over * (1 << np.arange(len(BONE_NAMES)))).sum(axis=-1).astype("<u2")
 
 
-def pose_moments(bone_deg: np.ndarray, mirrored: np.ndarray, fps: float, threshold: float, count: int = 3) -> list[dict]:
+def pose_moments(bone_deg: np.ndarray, mirrored: np.ndarray, fps: float, threshold: float, count: int = 3,
+                 together: np.ndarray | None = None) -> list[dict]:
     """Per member: the biggest pose differences *held* for half a second (one per second), and how
-    many seconds were left out because a bone pointed `VERY_DIFFERENT_DEG` or more away.
+    many seconds were left out because a bone pointed `VERY_DIFFERENT_DEG` or more away. Only where
+    the member dances together with the group (`together`, M x T): in a solo or a different part
+    there is no group pose to differ from.
 
     Ranking single frames by their worst error lists artefacts: on the BTS clip every member's top
     three were hips or shoulders turned around (the pose model swapping left and right, or a dancer
@@ -98,6 +101,8 @@ def pose_moments(bone_deg: np.ndarray, mirrored: np.ndarray, fps: float, thresho
 
     width = max(3, int(round(0.5 * fps)))
     excess = bone_deg - nanmedian_first_axis(bone_deg)[None]
+    if together is not None:
+        excess = np.where(firmly_together(together.astype(bool), fps)[:, :, None], excess, np.nan)
     very = np.nan_to_num(bone_deg) >= VERY_DIFFERENT_DEG
     out = []
     for i in range(len(bone_deg)):
@@ -150,7 +155,10 @@ def _beat(video: Path | None, xy: np.ndarray, conf: np.ndarray, fps: float, conf
         return None, "No beat: no video was given, so there is no soundtrack.", None, None
     if importlib.util.find_spec("av") is None:
         return None, "No beat: reading the soundtrack needs PyAV (pip install av).", None, None
-    grid = beat_grid(load_audio(Path(video)))
+    try:
+        grid = beat_grid(load_audio(Path(video)))
+    except Exception as error:  # a damaged or unusual soundtrack must never stop the viewer
+        return None, f"No beat: the soundtrack couldn't be read ({error}).", None, None
     if grid is None:
         return None, "No beat: the video has no usable soundtrack.", None, None
     beats = {"tempo_bpm": round(grid.tempo_bpm, 2), "half_beat_s": grid.half_beat_s, "beat_phase_s": grid.beat_phase_s, "steady": grid.steady}
@@ -162,8 +170,9 @@ def _beat(video: Path | None, xy: np.ndarray, conf: np.ndarray, fps: float, conf
         v, vw = velocity(f.u, f.weight, fps, config.sync.max_bone_speed_deg_s)
         times = clean_landings(member_speed(v, vw), fps, config.beat) / fps
         landings.append([{"time_s": round(float(t), 3), "offset_ms": round(float(o), 1)} for t, o in zip(times, grid.offset_ms(times))])
-    note = (f"Beat: {grid.tempo_bpm:.0f} BPM from the soundtrack. A delay between sound and picture shifts every dancer "
-            "equally, and a move that lands between beats on purpose reads as off the beat.")
+    note = (f"Beat: {grid.tempo_bpm:.0f} BPM from the soundtrack. Landings are timed to the nearest half beat, so one "
+            f"on the \"and\" reads the same as one on the beat, and one more than {grid.half_beat_s * 500:.0f} ms off reads "
+            "against the neighbouring half beat. A delay between sound and picture shifts every dancer equally.")
     lock = landing_lock(np.array([x["offset_ms"] for member in landings for x in member]), grid.half_beat_s * 1000.0)
     return beats, note, landings, lock
 
@@ -198,7 +207,8 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
         "apart": apart_intervals(sync["together"], float(kp["fps"]), seen=(conf > 0).sum(axis=-1) >= 4) if "together" in sync else [[] for _ in range(members)],
         **dict(zip(("beats", "beat_note", "landings", "landing_lock"), _beat(video, xy, conf, float(kp["fps"]), config))),
         "moments": [{"worst_timing_moments": m["overall"]["worst_timing_moments"], **pose}
-                    for m, pose in zip(summary["members"], pose_moments(sync["bone_shape_deg"], mirrored, float(kp["fps"]), config.sync.shape_threshold_deg))],
+                    for m, pose in zip(summary["members"], pose_moments(sync["bone_shape_deg"], mirrored, float(kp["fps"]), config.sync.shape_threshold_deg,
+                                                                        together=sync.get("together")))],
     }
 
 

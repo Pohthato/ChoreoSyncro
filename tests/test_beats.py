@@ -89,3 +89,11 @@ def test_no_audio_stream_gives_none(tmp_path):
         writer.write(np.zeros((24, 32, 3), np.uint8))
     writer.release()
     assert load_audio(path, SR) is None
+
+
+def test_a_late_tempo_change_is_not_steady():
+    # Two thirds at 120 BPM, the last third at 100: most tracked beats still sit on one grid, but the
+    # grid is wrong for the whole last third. Steadiness is judged per stretch of the song too.
+    x = np.concatenate([_clicks(120.0, 0.2, 40), _clicks(100.0, 0.05, 20, seed=1)])
+    grid = beat_grid(x, SR)
+    assert grid is None or not grid.steady

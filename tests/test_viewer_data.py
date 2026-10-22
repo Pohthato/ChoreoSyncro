@@ -262,3 +262,63 @@ def test_beat_data_for_a_click_track_video(results, tmp_path):
     assert all(abs(x["offset_ms"]) <= 125 for member in data["landings"] for x in member)
     assert set(data["landing_lock"]) >= {"n", "within_50ms", "chance", "p", "locked"}
     assert data["video"] == video_url(video)
+
+
+def test_the_beat_note_states_the_half_beat_limits(results, tmp_path):
+    # Offsets are to the nearest half beat: a landing on the "and" reads like one on the beat, and
+    # one more than a quarter beat (125 ms at 120 BPM) off reads against the neighbouring half beat.
+    out, config, spec = results
+    data = viewer_data(out, config, spec.image_size, _click_track_file(tmp_path / "clicks.mp4"))
+    note = data["beat_note"]
+    assert "125 ms" in note and "neighbouring half beat" in note and '"and"' in note
+    assert "lands between beats on purpose reads as off" not in note
+
+
+def test_pose_differences_are_not_listed_where_there_is_no_group_reference(tmp_path):
+    # Three of seven dance a second part from 8 to 14 s: their poses differ from the group's by
+    # design. The page says "no group reference here", so neither the report's pose moments nor the
+    # viewer's held pose differences may point there.
+    import json
+
+    from syncscore.sync.summary import summarize, write_summary
+
+    config = load_config()
+    group = make_group(GroupSpec(n_members=7, duration_s=24, fps=30, parts=[([4, 5, 6], 8.0, 14.0)], seed=74))
+    result, xy, conf = analyze_keypoints(group.keypoints, group.conf, group.fps, config, names=group.names)
+    result.save(tmp_path / "sync_result.npz")
+    np.savez_compressed(tmp_path / "keypoints_smoothed.npz", xy=xy.astype(np.float32), conf=conf.astype(np.float32), fps=group.fps, names=np.array(group.names))
+    write_summary(summarize(result, config), tmp_path)
+    summary = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
+    data = viewer_data(tmp_path, config, (1920, 1080), None)
+
+    def inside(t):
+        return 8.0 <= t <= 14.0
+
+    report = [m["time_s"] for member in summary["members"] for m in member["overall"]["worst_shape_moments"]]
+    viewer = [m["time_s"] for member in data["moments"] for m in member["worst_shape_moments"]]
+    assert not any(inside(t) for t in report), report
+    assert not any(inside(t) for t in viewer), viewer
+
+
+def test_a_soundtrack_that_fails_to_decode_still_gives_a_viewer(results, tmp_path, monkeypatch):
+    # Whatever goes wrong reading the music, the viewer is still written, without a beat lane and
+    # with a note saying why.
+    import syncscore.audio.beats as beats
+
+    def broken(*args, **kwargs):
+        raise RuntimeError("corrupt audio packet")
+
+    monkeypatch.setattr(beats, "load_audio", broken)
+    out, config, spec = results
+    data = viewer_data(out, config, spec.image_size, _click_track_file(tmp_path / "clicks.mp4"))
+    assert data["beats"] is None and data["landings"] is None
+    assert "soundtrack" in data["beat_note"] and "corrupt audio packet" in data["beat_note"]
+
+
+def test_write_viewer_with_a_soundtrack_writes_the_data_script(results, tmp_path):
+    # The beat data has to survive JSON: numpy scalars (a numpy bool for `steady`) don't.
+    out, config, spec = results
+    index = write_viewer(out, tmp_path / "viewer", config, spec.image_size, _click_track_file(tmp_path / "clicks.mp4"))
+    text = (index.parent / "viewer_data.js").read_text(encoding="utf-8")
+    data = json.loads(text[text.index("=") + 1:].rstrip().rstrip(";"))
+    assert data["beats"]["steady"] is True

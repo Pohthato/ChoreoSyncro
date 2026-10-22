@@ -159,10 +159,11 @@ test("pulseAt peaks on the beat and fades", () => {
 });
 
 test("landingStatus uses the in-sync band", () => {
+  // Offsets are to the nearest half beat, which may be the "and": the text never says "the beat".
   assert.equal(core.landingStatus(12, 35).color, "#0ca30c");
-  assert.equal(core.landingStatus(12, 35).text, "on the beat (+12 ms)");
-  assert.equal(core.landingStatus(-48, 35).text, "48 ms before the beat");
-  assert.equal(core.landingStatus(60, 35).text, "60 ms after the beat");
+  assert.equal(core.landingStatus(12, 35).text, "on a half beat (+12 ms)");
+  assert.equal(core.landingStatus(-48, 35).text, "48 ms before the nearest half beat");
+  assert.equal(core.landingStatus(60, 35).text, "60 ms after the nearest half beat");
   assert.equal(core.landingStatus(60, 35).color, "#fab219");
 });
 
@@ -170,4 +171,29 @@ test("landingOffsetText states the offset without a verdict", () => {
   assert.equal(core.landingOffsetText(96), "96 ms after the nearest half beat");
   assert.equal(core.landingOffsetText(-43), "43 ms before the nearest half beat");
   assert.equal(core.landingOffsetText(0.3), "on a half beat");
+});
+
+test("nearestDot finds the landing dot under the pointer", () => {
+  const dots = [{ x: 100, y: 20, id: "a" }, { x: 112, y: 20, id: "b" }, { x: 100, y: 42, id: "c" }];
+  assert.equal(core.nearestDot(dots, 103, 21, 8).id, "a");
+  assert.equal(core.nearestDot(dots, 108, 20, 8).id, "b");
+  assert.equal(core.nearestDot(dots, 100, 40, 8).id, "c");
+  assert.equal(core.nearestDot(dots, 150, 20, 8), null);
+  assert.equal(core.nearestDot([], 0, 0, 8), null);
+});
+
+test("landingCaveat never states a share it doesn't have", () => {
+  assert.equal(core.landingCaveat({ n: 39, within_50ms: 0.385, chance: 0.4, p: 0.13, locked: false, min_n: 20 }),
+    "On this video the group's landings don't clearly line up with the beat (39% within 50 ms of a half beat; 40% by chance), so they aren't marked on or off the beat. Watch them with sound.");
+  assert.equal(core.landingCaveat({ n: 0, within_50ms: null, chance: 0.4, p: null, locked: false, min_n: 20 }),
+    "This video has no clean landings to compare with the beat.");
+  assert.equal(core.landingCaveat({ n: 7, within_50ms: 0.57, chance: 0.4, p: 0.2, locked: false, min_n: 20 }),
+    "Only 7 clean landings in this video: too few to tell whether they line up with the beat, so they aren't marked on or off it. Watch them with sound.");
+  assert.equal(core.landingCaveat({ n: 40, within_50ms: 0.8, chance: 0.4, p: 0.001, locked: true, min_n: 20 }), "");
+});
+
+test("landingOrder lists every landing in time order", () => {
+  const mine = [{ time_s: 30, offset_ms: 5 }, { time_s: 10, offset_ms: 120 }, { time_s: 20, offset_ms: -60 }];
+  assert.deepEqual(core.landingOrder(mine).map((x) => x.time_s), [10, 20, 30]);
+  assert.equal(mine[0].time_s, 30);  // the data isn't reordered in place
 });

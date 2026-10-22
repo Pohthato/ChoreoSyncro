@@ -208,7 +208,7 @@
       ctx.fillStyle = "#c3c2b7";
       ctx.font = `${14 * unit}px ${getComputedStyle(document.body).fontFamily}`;
       ctx.textAlign = "left";
-      ctx.fillText("No group reference here (solo or different parts)", 14 * unit, 26 * unit);
+      ctx.fillText("No group reference here (a solo, different parts, or too few others in view)", 14 * unit, 26 * unit);
     }
     if (BEATS) {
       // A pulse at the stage's top right on every beat.
@@ -228,7 +228,9 @@
   // 3 s around now: beat ticks (strong) and "and"s (light), each dancer's clean landings as dots.
   const lane = $("beat-lane"), bctx = lane.getContext("2d");
   const LANE_S = 1.5;
+  let laneDots = [];  // where each landing dot was drawn, in CSS pixels: hover shows it, click replays it
   function drawBeatLane(t) {
+    laneDots = [];
     const rows = state.view === "group" ? [...Array(M).keys()] : [state.member];
     lane.style.height = `${24 + 22 * rows.length}px`;
     const view = sizeCanvas(lane), unit = view.dpr;
@@ -262,6 +264,7 @@
         bctx.beginPath();
         bctx.arc(x(landing.time_s), y, 5 * unit, 0, 2 * Math.PI);
         bctx.fill();
+        laneDots.push({ x: x(landing.time_s) / unit, y: y / unit, member: i, landing });
       }
     });
   }
@@ -309,7 +312,7 @@
         const f = C.frameAt(t, FPS, T);
         const apart = !together(i, f) && C.followBox(C.pointsAt(KP, T, i, f), C.confAt(CF, T, i, f), MIN_CONF, null, 0);
         nowItems[i].querySelector(".status").innerHTML =
-          `<span class="chip" style="--c:${s.color}"></span>${s.text}${apart ? " <small>(solo or different part)</small>" : ""}`;
+          `<span class="chip" style="--c:${s.color}"></span>${s.text}${apart ? " <small>(no group reference)</small>" : ""}`;
       });
     } else {
       $("dancer-now").textContent = `This section: ${statusAt(state.member, t).text}`;
@@ -366,7 +369,7 @@
       bar.className = "apart";
       bar.style.left = `${(100 * a) / DURATION}%`;
       bar.style.width = `${(100 * (b - a)) / DURATION}%`;
-      bar.title = `${name}, ${clockText(a)}-${clockText(b)}: not dancing with the group (solo or different parts)`;
+      bar.title = `${name}, ${clockText(a)}-${clockText(b)}: no group reference (a solo, different parts, or too few others in view)`;
       track.appendChild(bar);
     }
     timeline.appendChild(row);
@@ -376,18 +379,34 @@
   cursor.className = "cursor";
   timeline.appendChild(cursor);
 
+  // One second either side, slowed down and looping, so the moment can be studied.
+  function replay(timeS) {
+    setLoop([Math.max(timeS - 1, 0), Math.min(timeS + 1, DURATION)]);
+    setSpeed(0.25);
+    seek(Math.max(timeS - 1, 0));
+    setPlaying(true);
+  }
+
+  function laneDotAt(e) {
+    const r = lane.getBoundingClientRect();
+    return C.nearestDot(laneDots, e.clientX - r.left, e.clientY - r.top, 8);
+  }
+  lane.addEventListener("mousemove", (e) => {
+    const hit = laneDotAt(e);
+    lane.title = hit ? `${D.names[hit.member]} ${clockText(hit.landing.time_s)}: ${landingText(hit.landing.offset_ms)} (click to replay)` : "";
+    lane.style.cursor = hit ? "pointer" : "default";
+  });
+  lane.addEventListener("click", (e) => {
+    const hit = laneDotAt(e);
+    if (hit) replay(hit.landing.time_s);
+  });
+
   function moment(list, item, describe) {
     const li = document.createElement("li");
     const b = document.createElement("button");
     b.type = "button";
     b.innerHTML = describe(item);
-    b.addEventListener("click", () => {
-      // One second either side, slowed down and looping, so the moment can be studied.
-      setLoop([Math.max(item.time_s - 1, 0), Math.min(item.time_s + 1, DURATION)]);
-      setSpeed(0.25);
-      seek(Math.max(item.time_s - 1, 0));
-      setPlaying(true);
-    });
+    b.addEventListener("click", () => replay(item.time_s));
     li.appendChild(b);
     list.appendChild(li);
   }
@@ -421,16 +440,12 @@
     const mine = LANDINGS[state.member];
     const offsets = mine.map((x) => x.offset_ms).sort((a, b) => a - b);
     const median = offsets.length ? offsets[Math.floor(offsets.length / 2)] : null;
-    const lock = D.landing_lock;
-    const caveat = LOCKED ? "" :
-      ` On this video the group's landings don't line up with the beat more than chance (${Math.round(100 * lock.within_50ms)}% within 50 ms;` +
-      ` ${Math.round(100 * lock.chance)}% by chance), so they aren't marked on or off the beat. Watch them with sound.`;
+    const caveat = C.landingCaveat(D.landing_lock);
     summary.textContent = (!mine.length
       ? "No clean big moves (a fast move ending in stillness) to time against the beat."
       : `${mine.length} clean landing${mine.length === 1 ? "" : "s"}` +
-        (LOCKED && mine.length >= 5 ? `; median ${landingText(median)}.` : ".")) + caveat;
-    [...mine].sort((a, b) => Math.abs(b.offset_ms) - Math.abs(a.offset_ms)).slice(0, 6)
-      .forEach((it) => moment(list, it, (x) => `${clockText(x.time_s)}  ${landingText(x.offset_ms)}`));
+        (LOCKED && mine.length >= 5 ? `; median ${landingText(median)}.` : ".")) + (caveat ? " " + caveat : "");
+    C.landingOrder(mine).forEach((it) => moment(list, it, (x) => `${clockText(x.time_s)}  ${landingText(x.offset_ms)}`));
   }
 
   function setView(view, member) {

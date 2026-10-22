@@ -108,3 +108,11 @@ def test_the_members_on_screen_are_together_while_the_others_are_off_screen():
                                  occlusions=[Interval(3, 4.0, 12.0), Interval(4, 4.0, 12.0)], seed=73))
     flags = _together(group.keypoints, group.conf, group.fps)
     assert all(_share(flags[i], group.times, 5.0, 11.0) >= 0.90 for i in range(3))
+
+
+def test_a_trio_with_one_member_hidden_is_still_together():
+    # Three members, one off screen: the two still seen are a duo for that time, and a duo dancing
+    # the same thing is together (as in test_two_members_are_together_when_they_dance_the_same).
+    group = make_group(GroupSpec(n_members=3, duration_s=12, fps=30, occlusions=[Interval(2, 4.0, 9.0)], seed=75))
+    flags = _together(group.keypoints, group.conf, group.fps)
+    assert all(_share(flags[i], group.times, 5.0, 8.0) >= 0.90 for i in range(2))

@@ -66,9 +66,10 @@ def landing_lock(offsets_ms: np.ndarray, half_beat_ms: float) -> dict:
     n = int(off.size)
     chance = min(1.0, 100.0 / half_beat_ms)  # +-50 ms out of one half beat
     if n == 0:
-        return {"n": 0, "within_50ms": None, "chance": chance, "p": None, "locked": False}
+        return {"n": 0, "within_50ms": None, "chance": chance, "p": None, "locked": False, "min_n": MIN_LOCK_LANDINGS}
     resultant = abs(np.mean(np.exp(2j * np.pi * off / half_beat_ms)))
     p = float(np.exp(-n * resultant ** 2))  # Rayleigh test, large-sample form
     within = float(np.mean(np.abs(off) <= 50.0))
     locked = n >= MIN_LOCK_LANDINGS and p < LOCK_P and within >= chance + LOCK_MARGIN
-    return {"n": n, "within_50ms": round(within, 3), "chance": round(chance, 3), "p": round(p, 4), "locked": bool(locked)}
+    return {"n": n, "within_50ms": round(within, 3), "chance": round(chance, 3), "p": round(p, 4), "locked": bool(locked),
+            "min_n": MIN_LOCK_LANDINGS}

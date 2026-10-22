@@ -13,6 +13,7 @@ from ..features.bones import BONE_NAMES, PART_OF_BONE, PARTS, mirror_name
 from .measure import SyncResult
 from .consensus import nanmedian_first_axis
 from .sections import SectionTiming, section_timing
+from .unison import firmly_together
 
 
 def make_sections(config: Config, duration_s: float) -> list[tuple[float, float, str]]:
@@ -78,7 +79,10 @@ def _member_block(result: SyncResult, i: int, window_mask: np.ndarray, frame_mas
     # And judged *against the group*: on real 2D footage camera perspective and personal styling
     # put every dancer's arms tens of degrees from the consensus, so an absolute threshold flags
     # everyone all the time. A part is "off" when the member's error is more than the threshold
-    # above the group's typical error for that part in that frame.
+    # above the group's typical error for that part in that frame. Only where the member dances
+    # together with the group (unison.py): in a solo or a different part there is no group pose to
+    # differ from.
+    frame_mask = frame_mask & firmly_together(result.together, result.fps)[i]
     shape = worst_bone_by_part(result.bone_shape_deg[i][frame_mask])
     group = group_part[frame_mask]
     excess = shape - group

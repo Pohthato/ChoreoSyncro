@@ -11,7 +11,9 @@ Only the music is used here; nothing about the dancers. The steps are the standa
    but kept flipping between the beat and the off-beat (half a beat apart). The *half-beat* grid is
    the same either way, so it is fitted to the tracked beats (period refined to the best fit, phase
    from their circular mean). Of its two phases, the beat is the one where the sound is louder (the
-   kick); the other is the "and". The grid is `steady` only if most tracked beats sit on it.
+   kick); the other is the "and". The grid is `steady` only if most tracked beats sit on it, and
+   at least half of them do in every 20 s of the song: a tempo change in the last third leaves most
+   beats on one grid, but that grid is wrong for the whole last third.
 
 Decoding uses PyAV (an optional dependency). Without it, or without an audio stream, there is no
 beat and the viewer says so.
@@ -30,6 +32,9 @@ HOP = 256
 NFFT = 1024
 STEADY_MS = 40.0     # a tracked beat within this of the half-beat grid is "on" it
 STEADY_SHARE = 0.7   # ...and this share of them must be, for the grid to be called steady
+BLOCK_S = 20.0       # ...and in every stretch this long with at least BLOCK_BEATS beats,
+BLOCK_SHARE = 0.5    # at least this share (a wrong grid catches about 32% by chance; BTS's worst stretch: 62%)
+BLOCK_BEATS = 10
 MIN_SECONDS = 10.0
 
 
@@ -158,10 +163,13 @@ def beat_grid(x: np.ndarray, sr: int = SR) -> BeatGrid | None:
     hb = period / 2
     near = np.abs(((tracked - phase + hb / 2) % hb) - hb / 2) * 1000.0 <= STEADY_MS
     share = float(near.mean())
+    block = np.floor(tracked / BLOCK_S).astype(int)
+    stretches = [near[block == b].mean() for b in np.unique(block) if (block == b).sum() >= BLOCK_BEATS]
+    every_stretch = bool(min(stretches, default=1.0) >= BLOCK_SHARE)
     # Beat or off-beat: the louder of the two phases is the beat.
     def strength(start):
         grid = np.arange(start, times[-1], period)
         return float(np.mean(env[np.clip(np.searchsorted(times, grid), 0, len(env) - 1)]))
     beat_phase = phase if strength(phase) >= strength(phase + hb) else (phase + hb) % period
     return BeatGrid(tempo_bpm=60.0 / period, half_beat_s=hb, beat_phase_s=beat_phase,
-                    steady=share >= STEADY_SHARE, beat_share=share)
+                    steady=share >= STEADY_SHARE and every_stretch, beat_share=share)
