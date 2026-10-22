@@ -63,3 +63,19 @@ def test_a_short_tail_is_folded_into_the_last_section():
     sections = make_sections(config, 230.0)  # 32 s chunks: 7 full ones and a 6 s tail
     assert sections[-1] == (192.0, 230.0, "192-230s")
     assert len(make_sections(config, 16.0)) == 1
+
+
+def test_sections_pool_no_windows_while_the_group_dances_split_parts():
+    # Section timing is the report's main reading: it must not pool windows where the member is not
+    # dancing together with the group (here, three of seven dance a second part from 10 to 18 s).
+    from syncscore.sync.measure import measure_sync
+    from syncscore.sync.sections import usable_windows
+
+    config = load_config()
+    group = make_group(GroupSpec(n_members=7, duration_s=30, fps=30, parts=[([4, 5, 6], 10.0, 18.0)], seed=69))
+    result = measure_sync(group.keypoints, group.conf, group.fps, config)
+    usable = usable_windows(result, config)
+    inside = (result.window_centers_s > 11.0) & (result.window_centers_s < 17.0)
+    assert not usable[:, inside].any()
+    outside = (result.window_centers_s < 9.0) | (result.window_centers_s > 19.0)
+    assert usable[:, outside].mean() > 0.7

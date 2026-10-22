@@ -48,11 +48,12 @@ class SectionTiming:
 
 
 def usable_windows(result: SyncResult, config: Config) -> np.ndarray:
-    """(M, K) windows good enough to be pooled into a section estimate."""
+    """(M, K) windows good enough to be pooled into a section estimate. A window where the member
+    isn't dancing together with the group (a solo, split parts) measures nothing and never counts."""
     sc = config.sync
     return (np.isfinite(result.offset_ms) & (np.nan_to_num(result.peak) >= config.sections.min_peak)
             & (result.motion >= sc.min_motion) & (result.coverage >= sc.min_coverage)
-            & (np.nan_to_num(result.margin, nan=-1.0) >= sc.min_margin))
+            & (np.nan_to_num(result.margin, nan=-1.0) >= sc.min_margin) & ~result.apart)
 
 
 def _block_bootstrap_median(values: np.ndarray, block: int, rng: np.random.Generator, draws: int = 400) -> tuple[float, float]:

@@ -68,6 +68,7 @@ class SyncResult:
     hit_offset_ms: np.ndarray      # (M, H) member's peak minus the others' median peak; NaN = no clean match
     hit_agreement: np.ndarray      # (M, H) how well the member's movement matched the group's direction there
     together: np.ndarray           # (M, T) bool: dancing together with the group (unison.py); timing only counts there
+    apart: np.ndarray              # (M, K) bool: together for less than half of the window; no timing from it
     bone_names: tuple = BONE_NAMES
     part_names: tuple = PARTS
     notes: list = field(default_factory=list)
@@ -234,5 +235,6 @@ def measure_sync(xy: np.ndarray, conf: np.ndarray, fps: float, config: Config, n
         offset_curve_ms=curves * frame_ms, bone_shape_deg=bone_deg, part_shape_deg=part_deg,
         facing_differently=facing,
         hit_times_s=hits.frames / fps, hit_offset_ms=hits.offset_ms, hit_agreement=hits.agreement, together=joint,
+        apart=apart,
     )
 
