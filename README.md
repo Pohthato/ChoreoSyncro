@@ -53,6 +53,8 @@ flowchart LR
 | section timing | median of many looser windows per section (default 32 s), with a 90% interval from a joint block bootstrap ([sync/sections.py](syncscore/sync/sections.py)) | on real dance single windows are weak witnesses, and pooling is what holds up when shifts are planted into real footage. "0 ms" stays the clip's median member even when someone is hidden. |
 | group clock | iterate: align members, rebuild consensus, re-measure, damped, until < 0.1 ms change ([sync/measure.py](syncscore/sync/measure.py)) | offsets are relative to the **median member**. Without damping the estimates overshoot each other (with 2 members, forever). |
 | shape | angle between each bone and the **whole-group median** after removing timing ([sync/shape.py](syncscore/sync/shape.py)); a part is "off" when it is more than 15° beyond the **group's own typical error** at that moment | including the member makes the median a vote, which stays robust in a trio. On real 2D footage perspective and styling put everyone's arms tens of degrees from the consensus, so only standing out from the group counts. |
+| dancing together | per member and frame: most of the others seen dance the same thing (limbs within a limit of each other), the member dances it too, and is moving while they move or still while they hold; limits scale with the clip's typical difference ([sync/unison.py](syncscore/sync/unison.py)) | during a solo, split parts or a member's own pose, "the group" is no reference: no ghost there, and those windows don't count for timing. |
+| the beat | the soundtrack via **PyAV**, a spectral-flux onset curve, tempo by autocorrelation, beats by dynamic programming, then a steady **half-beat grid** fitted to them ([audio/beats.py](syncscore/audio/beats.py)); **clean landings**: a big move falling into stillness ([sync/landings.py](syncscore/sync/landings.py)) | shown in the viewer to judge by eye, not scored: on the test clip the landings didn't line up with the beat any better than chance (Limitations). |
 | honesty gates | a window is "no reading" when the group barely moves, the match is poor, the member is mostly unseen, or **a second correlation peak is nearly as high** (repeated grooves) | not knowing is reported as not knowing. |
 
 The full reasoning, stage by stage, is in [docs/walkthrough.md](docs/walkthrough.md).
@@ -72,6 +74,15 @@ ghost; a wrong arm shows as the gap between their arm and the ghost's.
   loop.
 - **Lineup:** everyone side by side, feet on one line, to compare a move.
 - Links open the page at a moment: `index.html?t=62.9&view=dancer&member=M3&speed=0.25`.
+- **Only while the group dances together:** during a solo, split parts, or a member holding their
+  own pose while the others dance, the group is no reference for them. There is no ghost, a grey
+  bar marks the stretch under their timeline row, and those moments don't count for timing.
+- **The beat:** from the video's soundtrack, a lane under the controls shows the beat and the "and"
+  around the current moment, a dot pulses on each beat, and **Sound** plays the music (at ¼ speed
+  too). Each dancer's **clean landings** (a big move falling into stillness) sit on the lane as dots,
+  and the dancer view lists them with how far each fell from the nearest half beat. The dots are
+  coloured on/off the beat only when a video's landings demonstrably line up with the beat; on the
+  test clip they don't, so they stay neutral and the lane is for judging by eye.
 
 Only detected joints are drawn: joints the smoothing filled in for a few frames are left out, so
 nothing on screen is guessed. The page reads the video from where it is and never copies it, so
@@ -84,6 +95,11 @@ The pictures below are skeleton-only (video switched off).
 |---|---|
 | ![M3 on the real clip](docs/media/viewer_ghost_original.png) | ![M3 delayed by 133 ms](docs/media/viewer_ghost_planted.png) |
 | *Real clip, M3 at a hit: skeleton and ghost overlap (one arm differs).* | *The same moment with M3's track delayed by 133 ms: the arms trail the ghost.* |
+
+| | |
+|---|---|
+| ![The beat lane on the real clip](docs/media/viewer_beat.png) | ![M2 apart from the group, no ghost](docs/media/viewer_apart.png) |
+| *The beat lane: beats (bright) and the "and"s, each dancer's clean landings as dots, and grey bars under the timeline where a member was apart from the group.* | *M2 crouching while the others stand (3:00): no ghost and no group timing here. The pink marks still say the pose differs from the group's.* |
 
 ## Validation
 
@@ -141,14 +157,15 @@ planted: a real member's track is delayed by 33 / 67 / 133 ms and the measuremen
 |---|---|---|---|---|
 | single windows, strict gates | 3% of windows | 6.3 ms | 3% | |
 | single windows, 4 s long, gates loosened to 0.2 (before the tracking fix) | 23% | 14 ms | 13% | |
-| **32 s sections** (pooled, with intervals) | 33% of the planted members' sections | 9.7 ms | 0% | 100% |
+| **32 s sections** (pooled, with intervals) | 37% of the planted members' sections | 9.7 ms | 0% | 100% |
 | single hits (tried, not in the report) | 23% of hits | about 4 ms typical, 18 ms mean | 3% | |
 | 32 s sections from hits | 0% | | | |
-| 32 s sections, windows or hits | 33% | 9.7 ms | 0% | 100% |
+| 32 s sections, windows or hits | 37% | 9.7 ms | 0% | 100% |
 
 (3 members × 3 shifts, after the tracking fixes below. Filling occlusion gaps took sections from
 22% to 33% and the interval coverage from 83% to 100%; M2, who never got a section reading
-before, now gets one in 14-29% of sections.)
+before, now gets one in 14-29% of sections. Leaving out the windows where a member isn't dancing
+together with the group took sections from 33% to 37%: those windows only added spread.)
 
 Per window the measurement noise is about ±12-15 ms, but window offsets spread about ±60 ms,
 and that spread comes from the dancing (real timing variation, or styling read as timing). That's
@@ -181,7 +198,17 @@ Real accuracy is bounded by the pose model.
   to the camera show slightly different directions for the same 3D pose, which reads as shape
   error. Lifting to 3D would fix this at the cost of a second model with its own errors.
 - **Reference = the group.** Offsets are relative to the median member. If most of the group is
-  late against the music, that is invisible. Audio beat alignment is not implemented.
+  late against the music, that is invisible in the timing.
+- **The beat is shown, not scored.** The music's grid is solid (the test clip: 120 BPM, 87% of
+  tracked beats within 40 ms of a steady grid), but the dancers' side isn't: their clean landings
+  fell within 50 ms of a half beat 38.5% of the time where chance is 40%. Only the very biggest moves
+  leaned toward the beat in an earlier test (55-59%, about ten per dancer in the whole song), far
+  too few to time anyone by (docs/walkthrough.md, Stage F). Most choreography isn't hit-and-hold,
+  and a 2D landing at 30 fps can't be pinned to tens of milliseconds. A delay between sound and picture would shift every dancer equally, and a move that
+  lands between beats on purpose reads as off the beat.
+- **Dancing together is judged in 2D.** A canon (the same move in turn) and individual parts read
+  as apart, which is the intent; members dancing the same move facing very different ways can also
+  read as apart.
 - **Repeated grooves** faster than ±400 ms are fundamentally ambiguous: a member one full cycle
   late looks on time. These windows are flagged, not scored.
 - **ID swaps between members in matching outfits** are not reliably detected by the colour
@@ -241,6 +268,9 @@ syncscore audit path/to/video.mp4 --results results/ # sample frames to label ID
 syncscore audit-score results/audit/ids.csv          # true ID-swap rate
 pytest                                             # unit tests for the alignment math and the synthetic recovery
 ```
+
+The beat needs PyAV (`pip install av`, included in requirements.txt); without it, or for a video
+with no soundtrack, `view` still writes the viewer and the page says why there is no beat lane.
 
 `analyze` writes `summary.json` / `summary.csv` (per member and per section: offset with a 90%
 interval, share of sections in sync, strict single-window moments, body part most often off), `heatmap.png`, `report_cards/`,

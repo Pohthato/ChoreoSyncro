@@ -522,3 +522,94 @@ report flags.
 **What it can't show:** in 2D a member turned a different way from the others has a ghost that
 looks wrong even when they dance the same move (the 3D part of the plan addresses this), and the
 ghost of a member who is never seen has nothing to be drawn on.
+
+## Stage F: the beat, and dancing together (`audio/beats.py`, `sync/unison.py`, `sync/landings.py`)
+
+**Why:** using the viewer showed most sections say "no reading", and two things a dancer would ask
+for: timing against the *music* (who is closest to the beat), and no ghost during a solo, where
+"the group" isn't a reference.
+
+**The beat idea, tested before building.** The music side works: the soundtrack gives a steady
+120.0 BPM, and a half-beat grid (every 250 ms) fits the whole song. (A beat tracker alone kept
+flipping between the beat and the off-beat; the half-beat grid is the same either way, which is
+why the grid is fitted on it.) The dancers' side doesn't, from 2D pose at 30 fps:
+
+| what was timed against the beat (BTS clip) | events | within 50 ms of a half beat (chance: 40%) |
+|---|---|---|
+| landings of every move | 1,601 | 39% |
+| landings of big moves into stillness | 67 | 55% |
+| move starts | 629 | 43% |
+| big wrist stops / elbow starts | 99 / 73 | 38% / 59% |
+| a steady beat-frequency pulse in the motion | whole clip | 1.1x background (1.0 = none) |
+| motion against the music's own accents | whole clip | correlation 0.07 at best |
+
+Only the biggest, cleanest moves lean toward the beat (55% and 59%), and there are about ten of
+them per dancer in the whole song. Most of this choreography isn't hit-and-hold, its accents are
+spread over body parts and counts, and a 2D landing can't be pinned to tens of milliseconds. Timing
+every dancer per section against the beat would have given *fewer* readings than the group method,
+so it wasn't built.
+
+**What was built instead:**
+1. **Dancing together** (`sync/unison.py`). A member has a group reference only while most of the
+   other members dance the same thing and the member dances it too, in the same state (moving while
+   they move, still while they're still). A solo fails the state check, split parts fail the
+   "most of the others" check. There: no ghost in the viewer, a bar under the timeline, and no
+   timing against the group (those windows aren't used).
+2. **The beat in the viewer.** A lane under the controls with beat and off-beat ticks around the
+   current moment, a pulse on each beat, a sound toggle, and each dancer's **clean landings** (a big
+   move falling into stillness, timed where the speed is three quarters of the way down) as dots.
+
+**Found along the way:**
+- Speed normalised by a member's median speed is zero for a dancer who holds still more than half
+  the time (every speed then "unknown"); speed is now in units of their usual *moving* speed.
+- "The others agree" first meant their median angle to their own median: in a 3/3 split the median
+  sits between the parts and the split was missed. Then pairwise median: a still member was marked
+  apart during someone else's solo in a five-member group (half the pairs include the soloist). Now:
+  the largest set of others within the limit of each other must be more than half of them.
+- **"More than half" first counted members who were off screen.** From 15 to 31 s only three
+  members are in frame; each had two others seen out of six, never more than half, so none of
+  them could ever be together. It now counts among the others who are seen.
+- **Fixed angle limits didn't fit real footage.** In 2D, camera angle and styling put members'
+  limbs apart even in unison: pairs across the clip have a median of 18 degrees and a quarter sit
+  above 24. In the chorus at 100-104 s, all seven dancing the same moves, fixed 25/30-degree limits
+  called each member together only 52-77% of the time. The limits now scale (at least twice the
+  clip's typical difference, so 36 and 30 here, with 25/30 as floors so clean synthetic splits are
+  still caught), and that chorus reads 100% together.
+- **Section timing ignored "together" at first.** The windows apart from the group were dropped
+  from the strict single-window readings, but the 32 s sections (the report's main reading) pooled
+  them anyway. The planted-shift test exposed it by coming back identical to the last digit. Now a
+  window where the member is together less than half the time never counts. The planted test
+  then measured 37% of sections (was 33%) with the same 9.7 ms error, 0% more than 30 ms wrong and
+  the truth inside every interval: those windows had only added spread. On the clip, 24 of 49
+  member-sections (49%) have a reading, all within ±30 ms of the group.
+- **What reads as apart on the real clip, checked frame by frame:** 16-23 s, where the three
+  members on screen do individual moves (no time shift within half a second brings their limbs
+  closer than 26 degrees); 44-47 s, a canon; 120-125 s, one member posing at the side while
+  another stands upright as the rest lean; 175-187 s, one member crouching and another posing
+  apart from the group. Each member is together in 81-92% of the frames they are seen.
+- **The landings don't lock to the beat on this clip either** (39 clean landings, 38.5% within 50 ms
+  where chance is 40%, Rayleigh p 0.13). Colouring each dot "on" or "off" the beat would be a verdict
+  with nothing behind it, so the viewer colours them only when a video's landings demonstrably lock
+  (at least 20, p below 0.01, clearly above chance), and otherwise shows neutral dots and the
+  numbers. On this clip: neutral. The lane is still useful: at quarter speed with sound, you can see
+  where each landing falls against the ticks and judge it by eye.
+
+**Proof the landings are timed right:** M3's real track delayed by 33 and then 67 ms. Six of its
+seven clean landings are found again each time, moved by a median of 33.4 and 67.0 ms (range
+33-34 and 66-67), and their offsets against the beat move by exactly the same. A dancer who lands
+later shows up later on the lane by that amount; what the test can't say is where on a real
+landing "the moment it lands" is, which is a definition (here: three quarters of the way from the
+move's peak speed down to the hold).
+
+**Limits:** the beat comes from the video's own soundtrack, so a delay between sound and picture
+shifts every dancer equally. Offsets are to the nearest half beat, so a landing more than 125 ms
+off reads as early or late against the neighbouring one, and a move that lands between beats on
+purpose reads as off the beat. "Together" is judged in 2D: a canon and individual parts read as
+apart (as intended), and so can members dancing the same move while facing very different ways.
+A tempo that isn't steady (at least 70% of tracked beats within 40 ms of one grid) gets no lane,
+and the page says why.
+
+| | |
+|---|---|
+| ![The beat lane](media/viewer_beat.png) | ![M2 apart, no ghost](media/viewer_apart.png) |
+| *The lane at 2:36 (skeleton only). Dots are neutral: this clip's landings don't lock.* | *M2 crouching at 3:00 while the group stands: no ghost, no group timing.* |
