@@ -537,7 +537,7 @@ why the grid is fitted on it.) The dancers' side doesn't, from 2D pose at 30 fps
 | what was timed against the beat (BTS clip) | events | within 50 ms of a half beat (chance: 40%) |
 |---|---|---|
 | landings of every move | 1,601 | 39% |
-| landings of big moves into stillness | 67 | 55% |
+| landings of big moves out of stillness | 67 | 55% |
 | move starts | 629 | 43% |
 | big wrist stops / elbow starts | 99 / 73 | 38% / 59% |
 | a steady beat-frequency pulse in the motion | whole clip | 1.1x background (1.0 = none) |
@@ -553,8 +553,10 @@ so it wasn't built.
 1. **Dancing together** (`sync/unison.py`). A member has a group reference only while most of the
    other members dance the same thing and the member dances it too, in the same state (moving while
    they move, still while they're still). A solo fails the state check, split parts fail the
-   "most of the others" check. There: no ghost in the viewer, a bar under the timeline, and no
-   timing against the group (those windows aren't used).
+   "most of the others" check. There: no ghost in the viewer, a bar under the timeline, no
+   timing against the group (those windows aren't used), and no pose differences listed (the
+   report's and the viewer's lists skip those frames, and the second either side of them, since
+   the decision switches a fraction of a second after the dancing does).
 2. **The beat in the viewer.** A lane under the controls with beat and off-beat ticks around the
    current moment, a pulse on each beat, a sound toggle, and each dancer's **clean landings** (a big
    move falling into stillness, timed where the speed is three quarters of the way down) as dots.
@@ -571,7 +573,7 @@ so it wasn't built.
   them could ever be together. It now counts among the others who are seen.
 - **Fixed angle limits didn't fit real footage.** In 2D, camera angle and styling put members'
   limbs apart even in unison: pairs across the clip have a median of 18 degrees and a quarter sit
-  above 24. In the chorus at 100-104 s, all seven dancing the same moves, fixed 25/30-degree limits
+  above 25. In the chorus at 100-104 s, all seven dancing the same moves, fixed 25/30-degree limits
   called each member together only 52-77% of the time. The limits now scale (at least twice the
   clip's typical difference, so 36 and 30 here, with 25/30 as floors so clean synthetic splits are
   still caught), and that chorus reads 100% together.
@@ -602,12 +604,14 @@ landing "the moment it lands" is, which is a definition (here: three quarters of
 move's peak speed down to the hold).
 
 **Limits:** the beat comes from the video's own soundtrack, so a delay between sound and picture
-shifts every dancer equally. Offsets are to the nearest half beat, so a landing more than 125 ms
-off reads as early or late against the neighbouring one, and a move that lands between beats on
-purpose reads as off the beat. "Together" is judged in 2D: a canon and individual parts read as
+shifts every dancer equally. Offsets are to the nearest half beat (the beat or the "and"), so a
+landing on the "and" reads the same as one on the beat, one more than 125 ms off reads against the
+neighbouring half beat, and only a landing between half beats on purpose (a sixteenth) reads as off.
+The page says so under the lane. "Together" is judged in 2D: a canon and individual parts read as
 apart (as intended), and so can members dancing the same move while facing very different ways.
-A tempo that isn't steady (at least 70% of tracked beats within 40 ms of one grid) gets no lane,
-and the page says why.
+A tempo that isn't steady gets no lane, and the page says why: steady means at least 70% of the
+tracked beats within 40 ms of one grid, and at least half of them in every 20 s (so a tempo change
+late in the song isn't hidden by the rest; the BTS clip's weakest 20 s has 62%).
 
 | | |
 |---|---|

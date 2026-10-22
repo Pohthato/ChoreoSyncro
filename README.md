@@ -76,7 +76,8 @@ ghost; a wrong arm shows as the gap between their arm and the ghost's.
 - Links open the page at a moment: `index.html?t=62.9&view=dancer&member=M3&speed=0.25`.
 - **Only while the group dances together:** during a solo, split parts, or a member holding their
   own pose while the others dance, the group is no reference for them. There is no ghost, a grey
-  bar marks the stretch under their timeline row, and those moments don't count for timing.
+  bar marks the stretch under their timeline row, and those moments don't count for timing or
+  for the listed pose differences.
 - **The beat:** from the video's soundtrack, a lane under the controls shows the beat and the "and"
   around the current moment, a dot pulses on each beat, and **Sound** plays the music (at ¼ speed
   too). Each dancer's **clean landings** (a big move falling into stillness) sit on the lane as dots,
@@ -204,8 +205,10 @@ Real accuracy is bounded by the pose model.
   fell within 50 ms of a half beat 38.5% of the time where chance is 40%. Only the very biggest moves
   leaned toward the beat in an earlier test (55-59%, about ten per dancer in the whole song), far
   too few to time anyone by (docs/walkthrough.md, Stage F). Most choreography isn't hit-and-hold,
-  and a 2D landing at 30 fps can't be pinned to tens of milliseconds. A delay between sound and picture would shift every dancer equally, and a move that
-  lands between beats on purpose reads as off the beat.
+  and a 2D landing at 30 fps can't be pinned to tens of milliseconds. A delay between sound and
+  picture would shift every dancer equally. Offsets are to the nearest half beat, so a landing on
+  the "and" reads like one on the beat, and one more than 125 ms off (at 120 BPM) reads against the
+  neighbouring half beat.
 - **Dancing together is judged in 2D.** A canon (the same move in turn) and individual parts read
   as apart, which is the intent; members dancing the same move facing very different ways can also
   read as apart.
