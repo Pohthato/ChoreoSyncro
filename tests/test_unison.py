@@ -98,3 +98,13 @@ def test_footage_wide_differences_still_count_as_together():
     assert together(u, w, speed, group.fps, CFG.unison).mean() >= 0.85
     fixed = dataclasses.replace(CFG.unison, max_spread_deg=25.0, max_own_deg=30.0)
     assert fixed.max_spread_deg == CFG.unison.max_spread_deg  # the floors are the old fixed limits
+
+
+def test_the_members_on_screen_are_together_while_the_others_are_off_screen():
+    # Two of five members leave the frame; the three still seen dance the same thing. "Most of the
+    # others agree" is judged among the others who are seen: counted against all four, two can never
+    # be "more than half", and members alone on screen could never be together.
+    group = make_group(GroupSpec(n_members=5, duration_s=16, fps=30,
+                                 occlusions=[Interval(3, 4.0, 12.0), Interval(4, 4.0, 12.0)], seed=73))
+    flags = _together(group.keypoints, group.conf, group.fps)
+    assert all(_share(flags[i], group.times, 5.0, 11.0) >= 0.90 for i in range(3))

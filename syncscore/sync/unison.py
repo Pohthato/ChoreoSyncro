@@ -8,7 +8,7 @@ out with no reading).
 
 Member i is together with the group at frame t when, over a short window:
 - **most of the others dance the same thing**: the largest set of them whose limbs are within
-  `max_spread_deg` of each other (pairwise, over `smooth_s`) is more than half of them. One other
+  `max_spread_deg` of each other (pairwise, over `smooth_s`) is more than half of those seen. One other
   member soloing doesn't break it; split parts (2/2, 3/3) do. (Not "angle to their median": in a
   3/3 split the median falls between the parts and everyone looks only half as far from it as
   the parts are from each other.);
@@ -24,8 +24,9 @@ choreography and would dilute the comparison.
 
 **The limits scale with the footage.** In 2D, camera angle and personal styling put members' limbs
 apart even when they dance the same move: on the BTS clip pairs of members sat at a median of 17
-degrees, a quarter of them above 24. A fixed 25-degree limit then marked three members dancing a
-verse together as "apart". So both limits are at least twice this clip's typical difference
+degrees, a quarter of them above 24. Fixed 25/30-degree limits then called members of the whole
+group dancing the chorus together only 52-77% of the time (100% with these). So both limits are at
+least twice this clip's typical difference
 (the median over pairs, or over members, while most members are seen), with `max_spread_deg` and
 `max_own_deg` as floors. Clean synthetic groups keep the floors, so their splits are still caught.
 """
@@ -107,9 +108,11 @@ def together(u: np.ndarray, w: np.ndarray, speed: np.ndarray, fps: float, cfg) -
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", RuntimeWarning)
             others_moving = np.nanmean(moving[others], axis=0)
-        # Largest set of others close to one of them (a member and everyone near them), as a share.
-        biggest = close[np.ix_(others, others)].sum(axis=1).max(axis=0)
-        agree = biggest > len(others) / 2
+        # Largest set of seen others close to one of them (a member and everyone near them), against
+        # the number seen: members off screen neither agree nor disagree.
+        seen_others = seen[others]
+        near = close[np.ix_(others, others)] & seen_others[:, None, :] & seen_others[None, :, :]
+        agree = near.sum(axis=1).max(axis=0) > seen_others.sum(axis=0) / 2
         own = np.nan_to_num(own_angle[i], nan=np.inf) <= max_own
         their_state = np.nan_to_num(others_moving, nan=0.0) >= cfg.min_moving_share  # already smoothed, like state[i]
         enough = seen[others].sum(axis=0) >= min(cfg.min_others, len(others))
