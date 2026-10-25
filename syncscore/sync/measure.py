@@ -60,7 +60,8 @@ class SyncResult:
     part_offset_ms: np.ndarray     # (M, P, K)
     part_reliable: np.ndarray      # (M, P, K)
     mirrored: np.ndarray           # (M, K) bool, member compared as mirrored in that window
-    offset_curve_ms: np.ndarray    # (M, T) per-frame offset, interpolated between reliable windows
+    offset_curve_ms: np.ndarray    # (M, T) per-frame offset the alignment used: interpolated between the windows reliable in its
+                                   # last pass, before `apart` windows were dropped from `reliable` (so it runs through those too)
     bone_shape_deg: np.ndarray     # (M, T, B) on the member's own (video) clock
     part_shape_deg: np.ndarray     # (M, T, P)
     facing_differently: np.ndarray # (M, T) shoulders and hips reversed vs the group: pose not comparable
