@@ -57,8 +57,8 @@ LOCK_MARGIN = 0.15  # share within 50 ms must beat chance by this much
 def landing_lock(offsets_ms: np.ndarray, half_beat_ms: float) -> dict:
     """Do this video's landings line up with the beat at all?
 
-    On the BTS clip they don't: 39 clean landings, 38% within 50 ms of a half beat where chance is
-    40%, spread over the whole +-125 ms (Rayleigh p 0.13). Colouring each landing "on" or "off" the
+    On the BTS clip they don't: 31 clean landings, 42% within 50 ms of a half beat where chance is
+    40%, spread over the whole +-125 ms (Rayleigh p 0.65). Colouring each landing "on" or "off" the
     beat would then be a verdict the data can't support. So the viewer colours them only when the
     whole video's landings demonstrably lock: at least MIN_LOCK_LANDINGS, clustered on the
     half-beat circle (Rayleigh p below LOCK_P), and within 50 ms clearly more often than chance."""

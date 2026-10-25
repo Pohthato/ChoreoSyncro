@@ -42,6 +42,10 @@ from .consensus import leave_one_out_median
 
 _LIMBS = [BONE_NAMES.index(n) for n in ("left_upper_arm", "left_forearm", "right_upper_arm", "right_forearm",
                                         "left_thigh", "left_shin", "right_thigh", "right_shin")]
+# Bones turning slower than this (rad/s, RMS) are pose jitter, not a move. On the BTS clip's
+# smoothed keypoints, members holding still sit at a median 0.02-0.08 rad/s, 90th percentile
+# 0.09-0.17; their usual moving speed is about 1.3.
+STILL_RAD_S = 0.2
 
 
 def _smooth(x: np.ndarray, frames: int) -> np.ndarray:
@@ -67,14 +71,15 @@ def _limb_angle(u: np.ndarray, w: np.ndarray, ref: np.ndarray, ref_w: np.ndarray
 
 def member_speed(v: np.ndarray, vw: np.ndarray) -> np.ndarray:
     """(T,) bone angular speed (RMS over bones) in units of the member's usual *moving* speed (the
-    median over frames where they move at all). A median over all frames would be 0 for a dancer
-    who holds still more than half the time, and every speed would become unknown."""
+    median over frames where they move faster than pose jitter, `STILL_RAD_S`). A median over all
+    frames would be jitter for a dancer who holds still more than half the time: holds would read as
+    their usual speed and every move as many times it."""
     known = np.isfinite(v[..., 0]) & (vw > 0)
     w = np.where(known, vw, 0.0)
     total = w.sum(axis=1)
     with np.errstate(invalid="ignore", divide="ignore"):
         speed = np.where(total > 0.5, np.sqrt((w * np.sum(np.nan_to_num(v) ** 2, axis=-1)).sum(axis=1) / total), np.nan)
-    moving = speed[np.isfinite(speed) & (speed > 1e-3)]
+    moving = speed[np.isfinite(speed) & (speed > STILL_RAD_S)]
     return speed / np.median(moving) if moving.size else np.full(len(v), np.nan)
 
 

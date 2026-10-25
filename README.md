@@ -202,7 +202,7 @@ Real accuracy is bounded by the pose model.
   late against the music, that is invisible in the timing.
 - **The beat is shown, not scored.** The music's grid is solid (the test clip: 120 BPM, 87% of
   tracked beats within 40 ms of a steady grid), but the dancers' side isn't: their clean landings
-  fell within 50 ms of a half beat 38.5% of the time where chance is 40%. Only the very biggest moves
+  fell within 50 ms of a half beat 41.9% of the time where chance is 40%. Only the very biggest moves
   leaned toward the beat in an earlier test (55-59%, about ten per dancer in the whole song), far
   too few to time anyone by (docs/walkthrough.md, Stage F). Most choreography isn't hit-and-hold,
   and a 2D landing at 30 fps can't be pinned to tens of milliseconds. A delay between sound and

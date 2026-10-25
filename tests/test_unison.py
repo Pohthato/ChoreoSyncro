@@ -116,3 +116,26 @@ def test_a_trio_with_one_member_hidden_is_still_together():
     group = make_group(GroupSpec(n_members=3, duration_s=12, fps=30, occlusions=[Interval(2, 4.0, 9.0)], seed=75))
     flags = _together(group.keypoints, group.conf, group.fps)
     assert all(_share(flags[i], group.times, 5.0, 8.0) >= 0.90 for i in range(2))
+
+
+def test_a_dancer_who_holds_still_most_of_the_time_gets_sensible_speeds():
+    # Member 2 holds still through member 1's 20 s solo and between moves: still in 82% of the 30 s.
+    # With keypoint noise and the analysis's smoothing, as on real footage (here the hold jitters at
+    # 0.06 rad/s median, BTS holds at 0.02-0.08), the usual moving speed must come from the moves,
+    # not from the jitter: the hold reads as still and the middle of a move as about its usual speed.
+    from syncscore.pipeline import smooth_group
+    from syncscore.synth.generate import make_choreography
+
+    spec = GroupSpec(n_members=3, duration_s=30, fps=30, solos=[Interval(0, 6.0, 26.0)], noise=0.003, seed=91)
+    group = make_group(spec)
+    xy, conf = smooth_group(group.keypoints, group.conf, group.fps, CFG)
+    f = bone_directions(xy[1], conf[1], CFG.pose.min_keypoint_conf)
+    speed = member_speed(*velocity(f.u, f.weight, group.fps, CFG.sync.max_bone_speed_deg_s))
+    t = group.times
+    plan = make_choreography(spec.duration_s, spec.bpm, np.random.default_rng(spec.seed))  # make_group's first draw
+    k = np.clip(np.searchsorted(plan.times, t, side="right") - 1, 0, len(plan.times) - 2)
+    tau = (t - plan.times[k]) / (plan.move_fraction * (plan.times[k + 1] - plan.times[k]))
+    mid_move = np.any(plan.poses[k + 1] != plan.poses[k], axis=1) & (tau > 0.1) & (tau < 0.9) & ((t < 6.0) | (t >= 26.0))
+    assert mid_move.sum() > 100
+    assert np.nanmedian(speed[(t >= 6.5) & (t < 25.5)]) < 0.15
+    assert 1.0 < np.nanmedian(speed[mid_move]) < 2.5

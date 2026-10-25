@@ -564,7 +564,10 @@ so it wasn't built.
 
 **Found along the way:**
 - Speed normalised by a member's median speed is zero for a dancer who holds still more than half
-  the time (every speed then "unknown"); speed is now in units of their usual *moving* speed.
+  the time (every speed then "unknown"); speed is now in units of their usual *moving* speed, the
+  median over frames where bones turn faster than pose jitter (0.2 rad/s; members holding still on
+  this clip sit at 0.02-0.08). A first cut at 0.001 rad/s let every frame through, jitter included:
+  for a dancer still most of the time, holds then read as their usual speed and moves as 18 times it.
 - "The others agree" first meant their median angle to their own median: in a 3/3 split the median
   sits between the parts and the split was missed. Then pairwise median: a still member was marked
   apart during someone else's solo in a five-member group (half the pairs include the soloist). Now:
@@ -589,17 +592,18 @@ so it wasn't built.
   members on screen do individual moves (no time shift within half a second brings their limbs
   closer than 26 degrees); 44-47 s, a canon; 120-125 s, one member posing at the side while
   another stands upright as the rest lean; 175-187 s, one member crouching and another posing
-  apart from the group. Each member is together in 81-92% of the frames they are seen.
-- **The landings don't lock to the beat on this clip either** (39 clean landings, 38.5% within 50 ms
-  where chance is 40%, Rayleigh p 0.13). Colouring each dot "on" or "off" the beat would be a verdict
+  apart from the group. Each member is together in 81-91% of the frames they are seen.
+- **The landings don't lock to the beat on this clip either** (31 clean landings, 41.9% within 50 ms
+  where chance is 40%, Rayleigh p 0.65). Colouring each dot "on" or "off" the beat would be a verdict
   with nothing behind it, so the viewer colours them only when a video's landings demonstrably lock
   (at least 20, p below 0.01, clearly above chance), and otherwise shows neutral dots and the
   numbers. On this clip: neutral. The lane is still useful: at quarter speed with sound, you can see
   where each landing falls against the ticks and judge it by eye.
 
-**Proof the landings are timed right:** M3's real track delayed by 33 and then 67 ms. Six of its
-seven clean landings are found again each time, moved by a median of 33.4 and 67.0 ms (range
-33-34 and 66-67), and their offsets against the beat move by exactly the same. A dancer who lands
+**Proof the landings are timed right:** each member's real track delayed by 33 and then 67 ms.
+29 and then 30 of the 31 clean landings are found again, moved by a median of 33.2 and 67.0 ms
+(26 of the 29 and all 30 within 2 ms of the delay), and their offsets against the beat move by
+exactly the same. A dancer who lands
 later shows up later on the lane by that amount; what the test can't say is where on a real
 landing "the moment it lands" is, which is a definition (here: three quarters of the way from the
 move's peak speed down to the hold).
