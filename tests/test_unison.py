@@ -79,8 +79,8 @@ def test_two_members_are_together_when_they_dance_the_same():
 
 def test_footage_wide_differences_still_count_as_together():
     # Same moves, but each member's limbs are turned by a fixed 0/15/30/45/60 degrees (camera angle,
-    # personal style): pairs sit 15-60 degrees apart all the time. Fixed 25-degree limits would call
-    # everyone apart; the limits scale with the clip's typical difference, so it is still unison.
+    # personal style): pairs sit 15-60 degrees apart all the time. The fixed 25/30-degree limits call
+    # much of this unison apart; the limits scale with the clip's typical difference, so it is unison.
     import dataclasses
 
     group = make_group(GroupSpec(n_members=5, duration_s=20, fps=30, seed=72))
@@ -96,8 +96,8 @@ def test_footage_wide_differences_still_count_as_together():
         speed.append(member_speed(v, vw))
     u, w, speed = np.stack(u), np.stack(w), np.stack(speed)
     assert together(u, w, speed, group.fps, CFG.unison).mean() >= 0.85
-    fixed = dataclasses.replace(CFG.unison, max_spread_deg=25.0, max_own_deg=30.0)
-    assert fixed.max_spread_deg == CFG.unison.max_spread_deg  # the floors are the old fixed limits
+    fixed = dataclasses.replace(CFG.unison, max_spread_deg=25.0, max_own_deg=30.0, limit_scale=0.0)
+    assert together(u, w, speed, group.fps, fixed).mean() <= 0.5
 
 
 def test_the_members_on_screen_are_together_while_the_others_are_off_screen():

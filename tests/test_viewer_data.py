@@ -332,3 +332,15 @@ def test_write_viewer_with_a_soundtrack_writes_the_data_script(results, tmp_path
     text = (index.parent / "viewer_data.js").read_text(encoding="utf-8")
     data = json.loads(text[text.index("=") + 1:].rstrip().rstrip(";"))
     assert data["beats"]["steady"] is True
+
+
+def test_without_pyav_the_note_says_how_to_get_the_beat(results, tmp_path, monkeypatch):
+    import importlib.util
+
+    find_spec = importlib.util.find_spec
+    monkeypatch.setattr(importlib.util, "find_spec", lambda name, *args: None if name == "av" else find_spec(name, *args))
+    out, config, spec = results
+    video = _click_track_file(tmp_path / "clicks.mp4")  # made before PyAV "goes missing": a beat to find
+    data = viewer_data(out, config, spec.image_size, video)
+    assert data["beats"] is None and data["landings"] is None and data["landing_lock"] is None
+    assert data["beat_note"] == "No beat: reading the soundtrack needs PyAV (pip install av)."

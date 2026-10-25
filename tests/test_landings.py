@@ -85,3 +85,19 @@ def test_the_lock_says_how_many_landings_it_needs():
 
     assert landing_lock(np.zeros(3), half_beat_ms=250.0)["min_n"] == MIN_LOCK_LANDINGS
     assert landing_lock(np.zeros(0), half_beat_ms=250.0)["min_n"] == MIN_LOCK_LANDINGS
+
+
+def test_the_shipped_peak_keeps_only_big_moves():
+    # Speed in units of the usual moving speed, holding still at 0.1 between strokes of 0.3 s. Ordinary
+    # moves peak at 1.8, big ones at 3; each falls into a hold. With the shipped settings
+    # (landing_peak 2.5) only the big ones land, three quarters of the way down: 0.25 s into the stroke.
+    fps = 30.0
+    t = np.arange(int(20 * fps)) / fps
+    speed = np.full(t.size, 0.1)
+    big, ordinary = [2.0, 6.0, 10.0, 14.0], [4.0, 8.0, 12.0, 16.0]
+    for start, peak in [(s, 3.0) for s in big] + [(s, 1.8) for s in ordinary]:
+        inside = (t >= start) & (t <= start + 0.3)
+        speed[inside] = 0.1 + (peak - 0.1) * np.sin(np.pi * (t[inside] - start) / 0.3) ** 2
+    found = clean_landings(speed, fps, CFG.beat) / fps
+    assert len(found) == 4
+    assert np.all(np.abs(found - (np.array(big) + 0.25)) < 1.5 / fps)

@@ -120,3 +120,40 @@ def test_a_short_stop_in_the_music_is_not_quiet():
     x = np.concatenate([_clicks(120.0, 0.31, 20), rng.normal(0, 0.002, int(1.5 * SR)).astype(np.float32),
                         _clicks(120.0, 0.06, 20, seed=1)])
     assert quiet_ranges(x, SR) == []
+
+
+def _offset_clip(path, audio_start_s, video_start_s, click_s=0.6, seconds=2.0):
+    """An mp4 whose sound and picture start at different times, with a click `click_s` into the sound."""
+    from fractions import Fraction
+
+    av = pytest.importorskip("av")
+    x = np.zeros(int(seconds * SR), np.float32)
+    i = int(click_s * SR)
+    x[i:i + 200] = 0.8 * np.sin(2 * np.pi * 1000 * np.arange(200) / SR)
+    with av.open(str(path), "w") as out:
+        video = out.add_stream("mpeg4", rate=30)
+        video.width, video.height, video.pix_fmt = 64, 48, "yuv420p"
+        audio = out.add_stream("aac", rate=SR)
+        for k in range(int(seconds * 30)):
+            frame = av.VideoFrame.from_ndarray(np.zeros((48, 64, 3), np.uint8), format="rgb24")
+            frame.pts, frame.time_base = k + int(round(video_start_s * 30)), Fraction(1, 30)
+            for packet in video.encode(frame):
+                out.mux(packet)
+        for packet in video.encode(None):
+            out.mux(packet)
+        for start in range(0, x.size, 1024):
+            frame = av.AudioFrame.from_ndarray(x[None, start:start + 1024], format="fltp", layout="mono")
+            frame.rate, frame.pts, frame.time_base = SR, start + int(round(audio_start_s * SR)), Fraction(1, SR)
+            for packet in audio.encode(frame):
+                out.mux(packet)
+        for packet in audio.encode(None):
+            out.mux(packet)
+    return path
+
+
+@pytest.mark.parametrize("audio_start_s, video_start_s, heard_s", [(0.5, 0.0, 1.1), (0.0, 0.3, 0.3)])
+def test_load_audio_lines_the_sound_up_with_the_picture(tmp_path, audio_start_s, video_start_s, heard_s):
+    # Sample 0 is the picture's first frame: sound starting after it is padded with silence, sound
+    # starting before it is trimmed. A click 0.6 s into the sound is heard 0.6 s after the sound starts.
+    x = load_audio(_offset_clip(tmp_path / "offset.mp4", audio_start_s, video_start_s), SR)
+    assert abs(np.argmax(np.abs(x) > 0.4) / SR - heard_s) < 0.005

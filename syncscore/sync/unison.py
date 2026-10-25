@@ -26,7 +26,7 @@ choreography and would dilute the comparison.
 apart even when they dance the same move: on the BTS clip pairs of members sat at a median of 18
 degrees, a quarter of them above 25. Fixed 25/30-degree limits then called members of the whole
 group dancing the chorus together only 52-77% of the time (100% with these). So both limits are at
-least twice this clip's typical difference
+least `limit_scale` (2) times this clip's typical difference
 (the median over pairs, or over members, while most members are seen), with `max_spread_deg` and
 `max_own_deg` as floors. Clean synthetic groups keep the floors, so their splits are still caught.
 """
@@ -98,7 +98,7 @@ def together(u: np.ndarray, w: np.ndarray, speed: np.ndarray, fps: float, cfg) -
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         typical_pair = np.nanmedian(np.concatenate([v[crowd] for v in pair.values()])) if pair and crowd.any() else 0.0
-    max_spread = max(cfg.max_spread_deg, 2.0 * np.nan_to_num(typical_pair))
+    max_spread = max(cfg.max_spread_deg, cfg.limit_scale * np.nan_to_num(typical_pair))
     close = np.eye(members, dtype=bool)[:, :, None].repeat(frames, axis=2)  # (M, M, T) within max_spread of each other
     for (a, b), angle in pair.items():
         close[a, b] = close[b, a] = np.nan_to_num(angle, nan=np.inf) <= max_spread
@@ -106,7 +106,7 @@ def together(u: np.ndarray, w: np.ndarray, speed: np.ndarray, fps: float, cfg) -
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
         typical_own = np.nanmedian(own_angle[:, crowd]) if crowd.any() else 0.0
-    max_own = max(cfg.max_own_deg, 2.0 * np.nan_to_num(typical_own))
+    max_own = max(cfg.max_own_deg, cfg.limit_scale * np.nan_to_num(typical_own))
     out = np.zeros((members, frames), dtype=bool)
     for i in range(members):
         others = [j for j in range(members) if j != i]
