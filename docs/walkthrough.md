@@ -579,9 +579,10 @@ so it wasn't built.
 - **Fixed angle limits didn't fit real footage.** In 2D, camera angle and styling put members'
   limbs apart even in unison: pairs across the clip have a median of 18 degrees and a quarter sit
   above 25. In the chorus at 100-104 s, all seven dancing the same moves, fixed 25/30-degree limits
-  called each member together only 52-77% of the time. The limits now scale (at least twice the
-  clip's typical difference, so 36 and 30 here, with 25/30 as floors so clean synthetic splits are
-  still caught), and that chorus reads 100% together.
+  called each member together in only 44-76% of the frames they were seen. The limits now scale (at
+  least twice the clip's typical difference, so 36 and 30 here, with 25/30 as floors so clean
+  synthetic splits are still caught), and that chorus reads 86-100% together (M4 86%, M6 92%,
+  everyone else at least 95%).
 - **Section timing ignored "together" at first.** The windows apart from the group were dropped
   from the strict single-window readings, but the 32 s sections (the report's main reading) pooled
   them anyway. The planted-shift test exposed it by coming back identical to the last digit. Now a

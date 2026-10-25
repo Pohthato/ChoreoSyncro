@@ -25,8 +25,8 @@ choreography and would dilute the comparison.
 **The limits scale with the footage.** In 2D, camera angle and personal styling put members' limbs
 apart even when they dance the same move: on the BTS clip pairs of members sat at a median of 18
 degrees, a quarter of them above 25. Fixed 25/30-degree limits then called members of the whole
-group dancing the chorus together only 52-77% of the time (100% with these). So both limits are at
-least `limit_scale` (2) times this clip's typical difference
+group dancing the chorus together in only 44-76% of the frames they were seen (86-100% with these).
+So both limits are at least `limit_scale` (2) times this clip's typical difference
 (the median over pairs, or over members, while most members are seen), with `max_spread_deg` and
 `max_own_deg` as floors. Clean synthetic groups keep the floors, so their splits are still caught.
 """
