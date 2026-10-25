@@ -14,6 +14,9 @@ Only the music is used here; nothing about the dancers. The steps are the standa
    kick); the other is the "and". The grid is `steady` only if most tracked beats sit on it, and
    at least half of them do in every 20 s of the song: a tempo change in the last third leaves most
    beats on one grid, but that grid is wrong for the whole last third.
+5. **Quiet stretches:** the grid runs on where the music has stopped (the last 5 s of the BTS clip
+   are 10-14 dB below the song's median loudness), so those stretches are listed and the viewer
+   draws no beat there.
 
 Decoding uses PyAV (an optional dependency). Without it, or without an audio stream, there is no
 beat and the viewer says so.
@@ -36,6 +39,9 @@ BLOCK_S = 20.0       # ...and in every stretch this long with at least BLOCK_BEA
 BLOCK_SHARE = 0.5    # at least this share (a wrong grid catches about 32% by chance; BTS's worst stretch: 62%)
 BLOCK_BEATS = 10
 MIN_SECONDS = 10.0
+QUIET_DB = 10.0      # quieter than the soundtrack's median loudness by this much (BTS's last 5 s: 10-14 dB)...
+QUIET_MIN_S = 2.0    # ...for at least this long (a shorter stop keeps the count) is a stretch with no beat to hear
+LOUDNESS_S = 1.0     # loudness over this long: at 60 BPM or faster, every stretch of music holds a beat
 
 
 @dataclass
@@ -94,6 +100,25 @@ def load_audio(path: Path, sr: int = SR) -> np.ndarray | None:
     elif lead < 0:
         x = x[int(round(-lead * sr)):]
     return x
+
+
+def quiet_ranges(x: np.ndarray, sr: int = SR) -> list[tuple[float, float]]:
+    """[(start_s, end_s), ...] where the soundtrack is near-silent (before the music starts, after it
+    ends): at least QUIET_MIN_S long and QUIET_DB below its median loudness. The beat grid runs on
+    through them, but there is nothing to hear, so the viewer draws no beat there."""
+    step = int(0.05 * sr)
+    n = len(x) // step
+    if n == 0:
+        return []
+    power = np.mean(np.asarray(x[: n * step], dtype=float).reshape(n, step) ** 2, axis=1)
+    level = 10 * np.log10(uniform_filter1d(power, max(1, int(round(LOUDNESS_S / 0.05))), mode="nearest") + 1e-20)
+    quiet = level < np.median(level) - QUIET_DB
+    edges = np.diff(np.r_[0, quiet.astype(int), 0])
+    starts, ends = np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)
+
+    def at(k):  # a quiet ending runs to the last sample
+        return len(x) / sr if k == n else float(k * step / sr)
+    return [(round(at(a), 2), round(at(b), 2)) for a, b in zip(starts, ends) if at(b) - at(a) >= QUIET_MIN_S]
 
 
 def onset_envelope(x: np.ndarray, sr: int = SR, hop: int = HOP) -> tuple[np.ndarray, np.ndarray]:

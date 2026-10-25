@@ -97,3 +97,26 @@ def test_a_late_tempo_change_is_not_steady():
     x = np.concatenate([_clicks(120.0, 0.2, 40), _clicks(100.0, 0.05, 20, seed=1)])
     grid = beat_grid(x, SR)
     assert grid is None or not grid.steady
+
+
+def test_the_silence_after_the_music_is_quiet():
+    # The music stops at 30 s; 6 s of faint room noise follow (the BTS clip ends with about 5 s
+    # like this). No beat is drawn there.
+    from syncscore.audio.beats import quiet_ranges
+
+    rng = np.random.default_rng(5)
+    x = np.concatenate([_clicks(120.0, 0.31, 30), rng.normal(0, 0.002, 6 * SR).astype(np.float32)])
+    quiet = quiet_ranges(x, SR)
+    assert len(quiet) == 1
+    start, end = quiet[0]
+    assert abs(start - 30.0) < 0.75 and abs(end - 36.0) < 0.1
+
+
+def test_a_short_stop_in_the_music_is_not_quiet():
+    # A stop shorter than a bar: dancers count through it, so the beat stays on the lane.
+    from syncscore.audio.beats import quiet_ranges
+
+    rng = np.random.default_rng(6)
+    x = np.concatenate([_clicks(120.0, 0.31, 20), rng.normal(0, 0.002, int(1.5 * SR)).astype(np.float32),
+                        _clicks(120.0, 0.06, 20, seed=1)])
+    assert quiet_ranges(x, SR) == []

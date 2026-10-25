@@ -149,19 +149,23 @@ def _beat(video: Path | None, xy: np.ndarray, conf: np.ndarray, fps: float, conf
     none. `landing_lock` says whether this video's landings line up with the beat at all."""
     import importlib.util
 
-    from ..audio.beats import beat_grid, load_audio
+    from ..audio.beats import beat_grid, load_audio, quiet_ranges
 
     if video is None:
         return None, "No beat: no video was given, so there is no soundtrack.", None, None
     if importlib.util.find_spec("av") is None:
         return None, "No beat: reading the soundtrack needs PyAV (pip install av).", None, None
     try:
-        grid = beat_grid(load_audio(Path(video)))
+        audio = load_audio(Path(video))
+        grid = beat_grid(audio)
+        quiet = quiet_ranges(audio) if grid is not None else []
     except Exception as error:  # a damaged or unusual soundtrack must never stop the viewer
         return None, f"No beat: the soundtrack couldn't be read ({error}).", None, None
     if grid is None:
         return None, "No beat: the video has no usable soundtrack.", None, None
-    beats = {"tempo_bpm": round(grid.tempo_bpm, 2), "half_beat_s": grid.half_beat_s, "beat_phase_s": grid.beat_phase_s, "steady": grid.steady}
+    # `quiet`: near-silent stretches (seconds), where the page draws no beat.
+    beats = {"tempo_bpm": round(grid.tempo_bpm, 2), "half_beat_s": grid.half_beat_s, "beat_phase_s": grid.beat_phase_s, "steady": grid.steady,
+             "quiet": [[a, b] for a, b in quiet]}
     if not grid.steady:
         return beats, "No beat grid: the tempo wasn't steady enough to draw one.", None, None
     landings = []

@@ -215,15 +215,15 @@ def test_viewer_marks_where_the_group_isnt_together(tmp_path):
     assert data["apart"][0] == []
 
 
-def _click_track_file(path, seconds=20, tempo=120.0, first=0.2, sr=22050):
-    """An audio-only mp4 with kicks on the beats and quieter hats on the off-beats."""
+def _click_track_file(path, seconds=20, tempo=120.0, first=0.2, sr=22050, music_s=None):
+    """An audio-only mp4 with kicks on the beats (until `music_s`, then faint noise only)."""
     av = pytest.importorskip("av")
     rng = np.random.default_rng(0)
     x = rng.normal(0, 0.002, int(seconds * sr))
     k = np.arange(int(0.08 * sr)) / sr
     kick = np.sin(2 * np.pi * 60 * k) * np.exp(-k / 0.03)
     kick[:60] += rng.normal(0, 0.8, 60)
-    for t in np.arange(first, seconds - 0.1, 60 / tempo):
+    for t in np.arange(first, (music_s or seconds) - 0.1, 60 / tempo):
         x[int(t * sr):int(t * sr) + kick.size] += kick
     x = x.astype(np.float32)
     with av.open(str(path), "w") as out:
@@ -262,6 +262,16 @@ def test_beat_data_for_a_click_track_video(results, tmp_path):
     assert all(abs(x["offset_ms"]) <= 125 for member in data["landings"] for x in member)
     assert set(data["landing_lock"]) >= {"n", "within_50ms", "chance", "p", "locked"}
     assert data["video"] == video_url(video)
+
+
+def test_the_beat_data_marks_where_the_soundtrack_is_quiet(results, tmp_path):
+    # The music stops at 15 s of 20: the page draws no beat after that.
+    out, config, spec = results
+    data = viewer_data(out, config, spec.image_size, _click_track_file(tmp_path / "clicks.mp4", music_s=15))
+    assert data["beats"]["steady"] and len(data["beats"]["quiet"]) == 1
+    start, end = data["beats"]["quiet"][0]
+    assert abs(start - 15.0) < 0.75 and end > 19.5
+    assert viewer_data(out, config, spec.image_size, _click_track_file(tmp_path / "full.mp4"))["beats"]["quiet"] == []
 
 
 def test_the_beat_note_states_the_half_beat_limits(results, tmp_path):

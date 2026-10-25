@@ -151,6 +151,26 @@ test("beatTicks lists on- and off-beats in a window", () => {
   assert.deepEqual(ticks.map((k) => k.on), [true, false, true, false]);
 });
 
+test("beatTicks gives no half beats outside the clip", () => {
+  assert.deepEqual(core.beatTicks(-1.0, 1.0, BEATS, 10).map((k) => Math.round(k.t * 1000)), [100, 350, 600, 850]);
+  assert.deepEqual(core.beatTicks(9.0, 11.0, BEATS, 10).map((k) => Math.round(k.t * 1000)), [9100, 9350, 9600, 9850]);
+});
+
+test("beatTicks gives no half beats where the soundtrack is quiet", () => {
+  const quiet = { ...BEATS, quiet: [[4.0, 6.0]] };
+  assert.deepEqual(core.beatTicks(3.0, 7.0, quiet, 10).map((k) => Math.round(k.t * 1000)),
+    [3100, 3350, 3600, 3850, 6100, 6350, 6600, 6850]);
+});
+
+test("beatHeard: inside the clip and not in a quiet stretch", () => {
+  const quiet = { ...BEATS, quiet: [[4.0, 6.0]] };
+  assert.equal(core.beatHeard(3.9, quiet, 10), true);
+  assert.equal(core.beatHeard(5.0, quiet, 10), false);
+  assert.equal(core.beatHeard(-0.1, quiet, 10), false);
+  assert.equal(core.beatHeard(10.0, quiet, 10), false);
+  assert.equal(core.beatHeard(5.0, BEATS, 10), true); // data written before quiet stretches were found
+});
+
 test("pulseAt peaks on the beat and fades", () => {
   assert.ok(Math.abs(core.pulseAt(10.1, BEATS, 0.12) - 1) < 1e-9);
   assert.ok(core.pulseAt(10.2, BEATS, 0.12) < 0.5);

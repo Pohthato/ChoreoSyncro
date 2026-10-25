@@ -213,14 +213,16 @@
       ctx.fillText("No group reference here (a solo, different parts, or too few others in view)", 14 * unit, 26 * unit);
     }
     if (BEATS) {
-      // A pulse at the stage's top right on every beat.
-      const p = C.pulseAt(t, BEATS, 0.12);
-      ctx.globalAlpha = 0.25 + 0.75 * p;
-      ctx.fillStyle = "#ffffff";
-      ctx.beginPath();
-      ctx.arc(view.w - 22 * unit, 22 * unit, (6 + 4 * p) * unit, 0, 2 * Math.PI);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+      // A pulse at the stage's top right on every beat, while there is music to hear.
+      if (C.beatHeard(t, BEATS, DURATION)) {
+        const p = C.pulseAt(t, BEATS, 0.12);
+        ctx.globalAlpha = 0.25 + 0.75 * p;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(view.w - 22 * unit, 22 * unit, (6 + 4 * p) * unit, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      }
       drawBeatLane(t);
     }
     if (state.lineup) drawLineup(f, t);
@@ -240,7 +242,7 @@
     const x = (time) => left + ((time - (t - LANE_S)) / (2 * LANE_S)) * width;
     bctx.fillStyle = "#1a1a19";
     bctx.fillRect(0, 0, view.w, view.h);
-    for (const tick of C.beatTicks(t - LANE_S, t + LANE_S, BEATS)) {
+    for (const tick of C.beatTicks(t - LANE_S, t + LANE_S, BEATS, DURATION)) {
       bctx.strokeStyle = tick.on ? "#c3c2b7" : "#52514e";
       bctx.lineWidth = (tick.on ? 2 : 1) * unit;
       bctx.beginPath();

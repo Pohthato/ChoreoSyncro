@@ -558,7 +558,8 @@ so it wasn't built.
    report's and the viewer's lists skip those frames, and the second either side of them, since
    the decision switches a fraction of a second after the dancing does).
 2. **The beat in the viewer.** A lane under the controls with beat and off-beat ticks around the
-   current moment, a pulse on each beat, a sound toggle, and each dancer's **clean landings** (a big
+   current moment, a pulse on each beat (neither where the soundtrack is near-silent, as in this
+   clip's last 5 s), a sound toggle, and each dancer's **clean landings** (a big
    move falling into stillness, timed where the speed is three quarters of the way down) as dots.
 
 **Found along the way:**

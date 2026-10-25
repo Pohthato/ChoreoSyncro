@@ -59,6 +59,29 @@ function analysis({ seconds = 10, video = null, beats = null } = {}) {
   };
 }
 
+const BEATS = { tempo_bpm: 120, half_beat_s: 0.25, beat_phase_s: 0.1, steady: true };
+const count = (ctx, name) => ctx.calls.filter((call) => call[0] === name).length;
+// The lane strokes each half beat on its own, then the line marking now.
+const halfBeatsDrawn = ($) => count($("beat-lane").ctx, "stroke") - 1;
+// With no skeleton on the stage, its only circle is the beat pulse.
+const pulseDrawn = ($) => count($("canvas").ctx, "arc") === 1;
+
+test("the beat lane shows half beats only inside the clip", () => {
+  // 1.5 s either side of now: at 0.2 s the half beats from 0.1 to 1.6 s, at 9.9 s from 8.6 to 9.85 s.
+  assert.equal(halfBeatsDrawn(openPage(analysis({ beats: BEATS }), "?t=0.2")), 7);
+  assert.equal(halfBeatsDrawn(openPage(analysis({ beats: BEATS }), "?t=9.9")), 6);
+});
+
+test("no beat lane ticks and no pulse where the soundtrack is quiet", () => {
+  const data = analysis({ beats: { ...BEATS, quiet: [[6.0, 10.0]] } });
+  const quiet = openPage(data, "?t=8.0");
+  assert.equal(halfBeatsDrawn(quiet), 0);
+  assert.equal(pulseDrawn(quiet), false);
+  const music = openPage(data, "?t=3.0");
+  assert.equal(halfBeatsDrawn(music), 12);
+  assert.equal(pulseDrawn(music), true);
+});
+
 test("Sound is disabled whenever there is no video to hear", () => {
   assert.equal(openPage(analysis())("sound").disabled, true);
   const $ = openPage(analysis({ video: "file:///C:/clips/missing.mp4" }));

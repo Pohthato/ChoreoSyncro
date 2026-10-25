@@ -168,12 +168,20 @@
     return t >= last ? { time: last, ended: true } : { time: t, ended: false };
   }
 
-  // The beat. `beats` = { tempo_bpm, half_beat_s, beat_phase_s, steady } from the soundtrack.
-  function beatTicks(t0, t1, beats) {
+  // The beat. `beats` = { tempo_bpm, half_beat_s, beat_phase_s, steady, quiet } from the soundtrack;
+  // `quiet` lists [start_s, end_s] stretches where it is near-silent.
+  // There is a beat to hear at `t` inside the clip, outside the quiet stretches.
+  function beatHeard(t, beats, durationS) {
+    return t >= 0 && t < durationS && !(beats.quiet || []).some(([a, b]) => t >= a && t < b);
+  }
+
+  // Half beats in [t0, t1) that can be heard (see beatHeard).
+  function beatTicks(t0, t1, beats, durationS = Infinity) {
     const hb = beats.half_beat_s;
     const out = [];
     for (let k = Math.ceil((t0 - beats.beat_phase_s) / hb - 1e-9); beats.beat_phase_s + k * hb < t1; k++) {
-      out.push({ t: beats.beat_phase_s + k * hb, on: ((k % 2) + 2) % 2 === 0 });
+      const t = beats.beat_phase_s + k * hb;
+      if (beatHeard(t, beats, durationS)) out.push({ t, on: ((k % 2) + 2) % 2 === 0 });
     }
     return out;
   }
@@ -225,7 +233,7 @@
 
   const SyncCore = {
     BONES, TORSO_SIDES, COLORS, decodeInt16, decodeUint8, decodeUint16, frameAt, sectionAt, signedMs, statusOf,
-    pointsAt, confAt, skeletonSegments, followBox, nearestBox, trackTime, beatTicks, pulseAt, landingStatus, landingOffsetText, landingCaveat, landingOrder, nearestDot, lineupTransform, wrapLoop, advanceClock,
+    pointsAt, confAt, skeletonSegments, followBox, nearestBox, trackTime, beatHeard, beatTicks, pulseAt, landingStatus, landingOffsetText, landingCaveat, landingOrder, nearestDot, lineupTransform, wrapLoop, advanceClock,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = SyncCore;
   else root.SyncCore = SyncCore;
