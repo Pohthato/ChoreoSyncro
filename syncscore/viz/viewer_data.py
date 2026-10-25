@@ -146,7 +146,8 @@ def _heights(xy: np.ndarray, conf: np.ndarray) -> list:
 def _beat(video: Path | None, xy: np.ndarray, conf: np.ndarray, fps: float, config: Config) -> tuple[dict | None, str, list | None, dict | None]:
     """The music's beat grid from the video's soundtrack and every member's clean landings against
     it: (beats, note, landings, landing_lock). Only a steady grid is used; the note says why there is
-    none. `landing_lock` says whether this video's landings line up with the beat at all."""
+    none. Landings where the soundtrack is quiet are left out: there is no beat to land on.
+    `landing_lock` says whether this video's landings line up with the beat at all."""
     import importlib.util
 
     from ..audio.beats import beat_grid, load_audio, quiet_ranges
@@ -163,7 +164,7 @@ def _beat(video: Path | None, xy: np.ndarray, conf: np.ndarray, fps: float, conf
         return None, f"No beat: the soundtrack couldn't be read ({error}).", None, None
     if grid is None:
         return None, "No beat: the video has no usable soundtrack.", None, None
-    # `quiet`: near-silent stretches (seconds), where the page draws no beat.
+    # `quiet`: near-silent stretches (seconds), where the page draws no beat and no landing is listed.
     beats = {"tempo_bpm": round(grid.tempo_bpm, 2), "half_beat_s": grid.half_beat_s, "beat_phase_s": grid.beat_phase_s, "steady": grid.steady,
              "quiet": [[a, b] for a, b in quiet]}
     if not grid.steady:
@@ -173,6 +174,7 @@ def _beat(video: Path | None, xy: np.ndarray, conf: np.ndarray, fps: float, conf
         f = bone_directions(xy[i], conf[i], config.pose.min_keypoint_conf)
         v, vw = velocity(f.u, f.weight, fps, config.sync.max_bone_speed_deg_s)
         times = clean_landings(member_speed(v, vw), fps, config.beat) / fps
+        times = times[[not any(a <= t < b for a, b in quiet) for t in times]]
         landings.append([{"time_s": round(float(t), 3), "offset_ms": round(float(o), 1)} for t, o in zip(times, grid.offset_ms(times))])
     note = (f"Beat: {grid.tempo_bpm:.0f} BPM from the soundtrack. Landings are timed to the nearest half beat, so one "
             f"on the \"and\" reads the same as one on the beat, and one more than {grid.half_beat_s * 500:.0f} ms off reads "

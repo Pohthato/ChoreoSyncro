@@ -15,8 +15,8 @@ Only the music is used here; nothing about the dancers. The steps are the standa
    at least half of them do in every 20 s of the song: a tempo change in the last third leaves most
    beats on one grid, but that grid is wrong for the whole last third.
 5. **Quiet stretches:** the grid runs on where the music has stopped (the last 5 s of the BTS clip
-   are 10-14 dB below the song's median loudness), so those stretches are listed and the viewer
-   draws no beat there.
+   are 10-14 dB below the song's median loudness), so those stretches are listed. The viewer draws
+   no beat there, and a landing there isn't timed against one.
 
 Decoding uses PyAV (an optional dependency). Without it, or without an audio stream, there is no
 beat and the viewer says so.

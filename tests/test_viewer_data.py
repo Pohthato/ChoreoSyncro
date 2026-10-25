@@ -274,6 +274,19 @@ def test_the_beat_data_marks_where_the_soundtrack_is_quiet(results, tmp_path):
     assert viewer_data(out, config, spec.image_size, _click_track_file(tmp_path / "full.mp4"))["beats"]["quiet"] == []
 
 
+def test_landings_where_the_soundtrack_is_quiet_get_no_beat_offset(results, tmp_path):
+    # The music stops at 12 s of 20 and the group keeps landing moves until 16 s: those have no beat
+    # to land on, so they are neither listed against it nor counted in the lock.
+    out, config, spec = results
+    full = viewer_data(out, config, spec.image_size, _click_track_file(tmp_path / "full.mp4"))
+    data = viewer_data(out, config, spec.image_size, _click_track_file(tmp_path / "clicks.mp4", music_s=12))
+    (start, end), = data["beats"]["quiet"]
+    assert any(start <= x["time_s"] for member in full["landings"] for x in member)
+    for heard, everything in zip(data["landings"], full["landings"]):
+        assert [x["time_s"] for x in heard] == [x["time_s"] for x in everything if x["time_s"] < start]
+    assert data["landing_lock"]["n"] == sum(len(member) for member in data["landings"])
+
+
 def test_the_beat_note_states_the_half_beat_limits(results, tmp_path):
     # Offsets are to the nearest half beat: a landing on the "and" reads like one on the beat, and
     # one more than a quarter beat (125 ms at 120 BPM) off reads against the neighbouring half beat.
