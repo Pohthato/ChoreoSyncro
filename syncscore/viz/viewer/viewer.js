@@ -86,7 +86,9 @@
     showNote("No video for this analysis. Showing skeletons only.");
   }
   function showNote(text) {
+    // Skeletons only: no video, so no sound either.
     state.videoOk = false;
+    $("sound").disabled = true;
     $("note").textContent = text;
     $("note").hidden = false;
   }
@@ -500,7 +502,6 @@
     video.muted = !video.muted;
     $("sound").setAttribute("aria-pressed", String(!video.muted));
   });
-  $("sound").disabled = !D.video;
   lane.hidden = !BEATS;
   $("beat-note").textContent = D.beat_note;
   lineup.hidden = !state.lineup;
