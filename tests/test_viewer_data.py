@@ -135,6 +135,23 @@ def test_view_command_writes_a_viewer(results, tmp_path):
     assert video_url(video) in (page / "viewer_data.js").read_text(encoding="utf-8")
 
 
+def test_view_command_can_point_the_page_at_a_served_video(results, tmp_path):
+    import cv2
+
+    from syncscore.cli import main
+
+    out, _, _ = results
+    video = tmp_path / "video.mp4"
+    writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (64, 48))
+    for k in range(30):
+        writer.write(np.full((48, 64, 3), k * 8, dtype=np.uint8))
+    writer.release()
+    assert main(["view", str(video), "--results", str(out), "--out", str(tmp_path / "served"), "--video-url", "../video.mp4"]) == 0
+    script = (tmp_path / "served" / "viewer_data.js").read_text(encoding="utf-8")
+    data = json.loads(script[len("window.SYNCSCORE = "):].rstrip().rstrip(";"))
+    assert data["video"] == "../video.mp4" and "file:" not in script
+
+
 @pytest.fixture(scope="module")
 def gappy(tmp_path_factory):
     """A group with dropped keypoints, so smoothing fills short gaps (results without the slow renders)."""

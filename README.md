@@ -266,6 +266,7 @@ syncscore demo --out results/demo                 # synthetic group through ever
 syncscore validate --out results/validate         # the benchmark above (a few minutes, runs in parallel)
 syncscore analyze path/to/video.mp4 --out results/   # real video
 syncscore view path/to/video.mp4 --results results/  # the viewer: open results/viewer/index.html
+syncscore serve                                    # or all of it from the browser: upload, wait, view
 syncscore shift-test --results results/               # plant known delays in real tracks, check they come back
 syncscore audit path/to/video.mp4 --results results/ # sample frames to label IDs by hand
 syncscore audit-score results/audit/ids.csv          # true ID-swap rate
@@ -274,6 +275,15 @@ pytest                                             # unit tests for the alignmen
 
 The beat needs PyAV (`pip install av`, included in requirements.txt); without it, or for a video
 with no soundtrack, `view` still writes the viewer and the page says why there is no beat lane.
+
+**From the browser:** `syncscore serve` starts a page at http://127.0.0.1:8000 and opens it. Only
+this computer can reach it. Pick an .mp4, set the number of members (0 counts them from the video)
+and press *Upload and measure*. The page shows each step as it runs; pose detection on a CPU takes
+several minutes for a 3-minute clip. When the analysis is done the page opens the video's viewer.
+Earlier uploads stay listed with a link to their viewer, and *Run again* repeats an analysis with
+another member count, reusing the poses already found. Uploads and their results are kept in
+`results/uploads/` (git-ignored). The server sends the video in byte ranges, so seeking works.
+`--port` picks another port; `syncscore --config my.yaml serve` applies a config to every upload.
 
 `analyze` writes `summary.json` / `summary.csv` (per member and per section: offset with a 90%
 interval, share of sections in sync, strict single-window moments, body part most often off), `heatmap.png`, `report_cards/`,
@@ -310,6 +320,7 @@ syncscore/
   synth/     generate.py (synthetic groups), benchmark.py, report.py
   viz/       skeleton_video.py, heatmap.py, report_card.py, smoothing_plot.py, style.py,
              ghost.py, viewer_data.py, viewer/ (the page: index.html, viewer.js, viewer_core.js, viewer.css)
+  serve/     app.py (the local server, byte ranges), jobs.py (uploads, analysis jobs), page/ (the start page)
   cli.py, pipeline.py, outputs.py, config.py
 configs/default.yaml
 tests/       alignment math, synthetic recovery, smoothing, tracking, outputs, viewer (js/ runs in Node)

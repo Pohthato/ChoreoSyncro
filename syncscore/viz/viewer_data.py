@@ -9,7 +9,8 @@ won't let a page fetch a JSON file next to it.
 Large arrays are base64: keypoints as little-endian int16 in quarter pixels (NaN = -32768),
 confidences as uint8, halos as a uint16 bit per bone. A 7-member, 3:50 clip is about 10 MB.
 
-No pixels are stored. The video is referenced by its local path and never copied.
+No pixels are stored. The video is referenced by its local path and never copied, or by the URL
+the page should play it from when it is served over http (`syncscore serve`).
 """
 from __future__ import annotations
 
@@ -183,7 +184,8 @@ def _beat(video: Path | None, xy: np.ndarray, conf: np.ndarray, fps: float, conf
     return beats, note, landings, lock
 
 
-def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], video: Path | None) -> dict:
+def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], video: Path | None, video_src: str | None = None) -> dict:
+    """`video` is read for the soundtrack; the page plays `video_src` if given, else the video's file:// URL."""
     result_dir = Path(result_dir)
     kp = np.load(result_dir / "keypoints_smoothed.npz")
     sync = dict(np.load(result_dir / "sync_result.npz"))
@@ -200,7 +202,7 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
         "version": 1, "fps": float(kp["fps"]), "n_frames": int(n_frames), "image_size": [int(v) for v in image_size],
         "names": [str(n) for n in kp["names"]],
         "in_sync_ms": config.render.in_sync_ms, "off_sync_ms": config.render.off_sync_ms,
-        "shape_threshold_deg": config.sync.shape_threshold_deg, "video": video_url(video) if video else None,
+        "shape_threshold_deg": config.sync.shape_threshold_deg, "video": video_src or (video_url(video) if video else None),
         "sections": [{"name": s["name"], "start_s": s["start_s"], "end_s": s["end_s"]} for s in summary["sections"]],
         "section_status": status,
         "keypoints": encode_int16(xy), "ghost": encode_int16(ghost),
@@ -218,11 +220,12 @@ def viewer_data(result_dir: Path, config: Config, image_size: tuple[int, int], v
     }
 
 
-def write_viewer(result_dir: Path, out_dir: Path, config: Config, image_size: tuple[int, int], video: Path | None) -> Path:
+def write_viewer(result_dir: Path, out_dir: Path, config: Config, image_size: tuple[int, int], video: Path | None,
+                 video_src: str | None = None) -> Path:
     """Write the viewer folder: the data script plus the page files. Returns index.html's path."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    data = viewer_data(result_dir, config, image_size, video)
+    data = viewer_data(result_dir, config, image_size, video, video_src)
     (out_dir / "viewer_data.js").write_text("window.SYNCSCORE = " + json.dumps(data, separators=(",", ":")) + ";\n", encoding="utf-8")
     if VIEWER_DIR.is_dir():
         for path in VIEWER_DIR.iterdir():

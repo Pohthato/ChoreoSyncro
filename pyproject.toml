@@ -29,7 +29,7 @@ syncscore = "syncscore.cli:main"
 include = ["syncscore*"]
 
 [tool.setuptools.package-data]
-syncscore = ["viz/viewer/*"]
+syncscore = ["viz/viewer/*", "serve/page/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

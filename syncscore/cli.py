@@ -1,4 +1,5 @@
-"""Command-line entry point: `syncscore analyze <video> --out results/` and `syncscore validate`."""
+"""Command-line entry point: `syncscore analyze <video> --out results/`, `syncscore validate`, and
+`syncscore serve` (the same analysis started from a page in the browser)."""
 from __future__ import annotations
 
 import argparse
@@ -184,10 +185,17 @@ def _view(args: argparse.Namespace) -> int:
     if not (results / "sync_result.npz").is_file():
         print(f"No analysis in {results}: run `syncscore analyze` first.", file=sys.stderr)
         return 2
-    index = write_viewer(results, Path(args.out) if args.out else results / "viewer", config, probe(video).size, video)
+    index = write_viewer(results, Path(args.out) if args.out else results / "viewer", config, probe(video).size, video, args.video_url)
     print(f"open {index}")
     print("The viewer plays the video from where it is now and never copies it. It stays out of the repository.")
     return 0
+
+
+def _serve(args: argparse.Namespace) -> int:
+    """A page on this computer to upload a video, follow its analysis and open its viewer."""
+    from .serve.app import serve
+
+    return serve(Path(args.root), args.config, args.port, open_browser=not args.no_browser)
 
 
 def _validate(args: argparse.Namespace) -> int:
@@ -278,7 +286,14 @@ def main(argv: list[str] | None = None) -> int:
     view.add_argument("video")
     view.add_argument("--results", default="results", help="the folder `analyze` wrote")
     view.add_argument("--out", default=None, help="where to write the viewer (default: <results>/viewer)")
+    view.add_argument("--video-url", default=None, help="the URL the page plays the video from (default: the video's file:// path)")
     view.set_defaults(run=_view)
+
+    serve = commands.add_parser("serve", help="Upload videos and open their viewers in the browser (runs on this computer only)")
+    serve.add_argument("--root", default="results/uploads", help="where uploads and their analyses are kept")
+    serve.add_argument("--port", type=int, default=8000)
+    serve.add_argument("--no-browser", action="store_true", help="don't open the page in the browser")
+    serve.set_defaults(run=_serve)
 
     shift = commands.add_parser("shift-test", help="Plant known delays in real tracks from `analyze` and check they are recovered")
     shift.add_argument("--results", default="results")

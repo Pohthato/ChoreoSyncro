@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>SyncScore</title>
+  <link rel="stylesheet" href="/static/start.css">
+</head>
+<body>
+  <header class="bar">
+    <h1>SyncScore</h1>
+    <p class="sub">Measured on this computer. The video is copied into the uploads folder and goes nowhere else.</p>
+  </header>
+
+  <main class="start">
+    <section class="card" aria-labelledby="new-title">
+      <h2 id="new-title">New video</h2>
+      <form id="upload" novalidate>
+        <label class="field">
+          <span>Practice video (.mp4, one fixed camera)</span>
+          <input type="file" id="file" accept=".mp4,video/mp4" required>
+        </label>
+        <label class="field narrow">
+          <span>Members</span>
+          <input type="number" id="members" min="0" max="50" step="1" value="0" inputmode="numeric">
+          <small>0 = count them from the video</small>
+        </label>
+        <button type="submit" id="go" class="primary">Upload and measure</button>
+      </form>
+      <p id="form-error" class="error" role="alert" hidden></p>
+
+      <div id="job" class="job" hidden>
+        <h3 id="job-name"></h3>
+        <ol class="steps" id="steps">
+          <li data-step="upload">Upload</li>
+          <li data-step="pose">Find every dancer's pose</li>
+          <li data-step="measure">Track and measure</li>
+          <li data-step="view">Build the viewer</li>
+        </ol>
+        <progress id="bar" max="1" hidden></progress>
+        <p id="detail" class="detail" aria-live="polite"></p>
+        <p id="job-error" class="error" role="alert" hidden></p>
+        <details id="log-box" hidden>
+          <summary>Log</summary>
+          <pre id="log"></pre>
+        </details>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="list-title">
+      <h2 id="list-title">Earlier videos</h2>
+      <p id="empty" class="hint">None yet.</p>
+      <ul id="list" class="list"></ul>
+    </section>
+  </main>
+
+  <template id="row">
+    <li class="row">
+      <div class="row-main">
+        <a class="name"></a>
+        <span class="when"></span>
+        <span class="status"></span>
+      </div>
+      <form class="again">
+        <label>Members <input type="number" min="0" max="50" step="1" inputmode="numeric"></label>
+        <button type="submit">Run again</button>
+      </form>
+    </li>
+  </template>
+
+  <script src="/static/start.js"></script>
+</body>
+</html>
