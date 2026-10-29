@@ -285,30 +285,82 @@ def suspected_swaps(hist: np.ndarray, box: np.ndarray, fps: float, iou_threshold
     return found
 
 
-def score_audit(csv_path: str | Path, fps: float) -> dict:
-    """Score a hand-labelled audit: rows of frame, shown_label, true_name.
+def audit_frames(seen: np.ndarray, fps: float, count: int, windows: list[tuple[float, float]], step_s: float = 0.2) -> np.ndarray:
+    """Frames to audit: `count` spread evenly over the frames where anyone is tracked, plus every
+    `step_s` inside each window (start_s, end_s), tracked or not, so a crossing is seen densely."""
+    frames = np.flatnonzero(seen)
+    picks = [frames[np.linspace(0, len(frames) - 1, min(count, len(frames))).astype(int)]] if len(frames) else []
+    for start, end in windows:
+        times = np.arange(start, end + 1e-6, step_s)
+        picks.append(np.clip(np.round(times * fps).astype(int), 0, len(seen) - 1))
+    return np.unique(np.concatenate(picks)) if picks else np.zeros(0, int)
 
-    Each shown label is mapped to the true name it most often has. Accuracy is the share of
-    audited sightings where the label had that name. A switch is two consecutive audited
-    sightings of the same label with different true names. Switches per minute are estimated
-    over the audited time span.
+
+def parse_window(text: str) -> tuple[float, float]:
+    """A window in seconds: "148-150.5" -> (148.0, 150.5)."""
+    start, _, end = text.partition("-")
+    start, end = float(start), float(end)
+    if end < start:
+        raise ValueError(f"window {text!r} ends before it starts")
+    return start, end
+
+
+def score_audit(csv_path: str | Path, fps: float, step_s: float = 0.2) -> dict:
+    """Score a hand-labelled audit: rows of frame, row, shown_label, true_name.
+
+    Member labels (not the `?n` labels of everyone else) give the old scores: each shown label
+    is mapped to the true name it most often has, accuracy is the share of sightings where the
+    label had that name, and a switch is two consecutive audited sightings of the same label with
+    different true names, per minute over the audited span. With named members the label should
+    *be* the true name, which gives:
+    - `exact_accuracy`: share of member labels showing the true name.
+    - `dancer_share`: share of member labels on a backup dancer (true name `dancer`).
+    - `longest_wrong_s`: the longest run of one label on the wrong person (audited frames at most
+      one step apart count as a run; its length is first to last plus one step).
+    - `tracked_share`: for each true name, the share of audited frames she is in where her own
+      label is on her.
     """
-    rows = []
+    rows, everyone = [], []
     with open(csv_path, newline="", encoding="utf-8") as handle:
         for row in csv.DictReader(handle):
-            if row.get("true_name", "").strip():
-                rows.append((int(row["frame"]), row["shown_label"].strip(), row["true_name"].strip()))
+            name = row.get("true_name", "").strip()
+            if not name:
+                continue
+            entry = (int(row["frame"]), row["shown_label"].strip(), name)
+            everyone.append(entry)
+            if not entry[1].startswith("?"):
+                rows.append(entry)
     if not rows:
         return {"labelled": 0}
     by_label: dict[str, list] = {}
     for frame, label, name in sorted(rows):
-        by_label.setdefault(label, []).append(name)
+        by_label.setdefault(label, []).append((frame, name))
     correct = switches = 0
-    for label, names in by_label.items():
+    longest = 0.0
+    step = round(step_s * fps) + 1
+    for label, seen in by_label.items():
+        names = [n for _, n in seen]
         majority = Counter(names).most_common(1)[0][0]
         correct += sum(n == majority for n in names)
         switches += sum(1 for x, y in zip(names, names[1:]) if x != y)
+        run_start = previous = None
+        for frame, name in seen:
+            if name == label and run_start is not None:
+                run_start = None
+            elif name != label:
+                if run_start is None or frame - previous > step:
+                    run_start = frame
+                longest = max(longest, (frame - run_start) / fps + step_s)
+            previous = frame
     frames = [r[0] for r in rows]
     minutes = max((max(frames) - min(frames)) / fps / 60.0, 1e-9)
+    tracked = {}
+    for name in sorted({n for _, _, n in everyone if n != "dancer"}):
+        present = {f for f, _, n in everyone if n == name}
+        on_her = {f for f, label, n in everyone if n == name and label == name}
+        tracked[name] = len(on_her) / len(present)
     return {"labelled": len(rows), "accuracy": correct / len(rows), "switches": switches,
-            "audited_minutes": round(minutes, 2), "switches_per_minute": round(switches / minutes, 3)}
+            "audited_minutes": round(minutes, 2), "switches_per_minute": round(switches / minutes, 3),
+            "exact_accuracy": sum(label == name for _, label, name in rows) / len(rows),
+            "dancer_share": sum(name == "dancer" for _, _, name in rows) / len(rows),
+            "longest_wrong_s": round(longest, 3), "tracked_share": tracked}

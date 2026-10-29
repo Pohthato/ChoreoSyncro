@@ -99,6 +99,19 @@ def test_audit_scoring(tmp_path):
     assert result["accuracy"] == pytest.approx(4 / 7)
 
 
+def test_named_audit_scores(tmp_path):
+    rows = ["frame,row,shown_label,true_name", "0,1,A,A", "0,2,B,dancer", "0,3,?1,B", "6,1,A,A", "6,2,B,B",
+            "12,1,A,B", "18,1,A,B", "24,1,A,A"]
+    path = tmp_path / "ids.csv"
+    path.write_text("\n".join(rows) + "\n", encoding="utf-8")
+    score = score_audit(path, fps=30.0)
+    assert score["labelled"] == 7
+    assert score["exact_accuracy"] == pytest.approx(4 / 7)
+    assert score["dancer_share"] == pytest.approx(1 / 7)
+    assert score["longest_wrong_s"] == pytest.approx(0.4)  # label A wrong at 12 and 18: 6 frames + one 0.2 s step
+    assert score["tracked_share"] == {"A": 1.0, "B": 0.25}
+
+
 def test_a_long_track_with_changed_colour_is_kept_when_a_slot_is_free():
     # Member A walks into different light: same position, very different torso colour, for 2 s.
     # In a dance practice nobody is a passer-by, so it must not be thrown away.

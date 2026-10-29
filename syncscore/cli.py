@@ -89,38 +89,57 @@ def _analyze(args: argparse.Namespace) -> int:
 
 
 def _audit(args: argparse.Namespace) -> int:
-    """Write sampled frames with member labels drawn, plus a CSV to fill in by hand."""
+    """Write sampled frames with every person drawn (members by label, everyone else ?1, ?2...),
+    plus a CSV to fill in by hand."""
     import csv
 
     import cv2
     import numpy as np
 
-    data = np.load(Path(args.results) / "keypoints_raw.npz")
-    box, names = data["box"], [str(n) for n in data["names"]]
+    from .pose.tracks import Detections, _iou, audit_frames, parse_window
+    from .pose.video import read_frames
+
+    results = Path(args.results)
+    data = np.load(results / "keypoints_raw.npz")
+    box, names, fps = data["box"], [str(n) for n in data["names"]], float(data["fps"])
+    try:
+        windows = [parse_window(w) for w in args.times]
+    except ValueError as error:
+        print(f"--times: {error}", file=sys.stderr)
+        return 2
     seen = np.isfinite(box[..., 0]).any(axis=0)
-    frames = np.flatnonzero(seen)
-    picks = frames[np.linspace(0, len(frames) - 1, min(args.frames, len(frames))).astype(int)]
-    out = Path(args.results) / "audit"
+    picks = audit_frames(seen, fps, args.frames, windows, args.step)
+    det = Detections.load(results / "detections.npz") if (results / "detections.npz").exists() else None
+    out = results / "audit"
     out.mkdir(parents=True, exist_ok=True)
     cap = cv2.VideoCapture(str(args.video))
     rows = []
-    for f in picks:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(f))
-        ok, frame = cap.read()
-        if not ok:
-            continue
+    for f, frame in read_frames(cap, picks):
+        candidates = np.flatnonzero(det.frame == f) if det is not None else np.zeros(0, int)
+        used = set()
         for i, name in enumerate(names):
             if np.isfinite(box[i, f]).all():
+                overlaps = _iou(box[i, f][None], det.box[candidates]) if len(candidates) else np.zeros(0)
+                match = int(candidates[np.argmax(overlaps)]) if len(overlaps) and np.nanmax(overlaps) >= 0.9 else -1
+                used.add(match)
                 x1, y1, x2, y2 = box[i, f].astype(int)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 220, 255), 2)
                 cv2.putText(frame, name, (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 220, 255), 2)
-                rows.append({"frame": int(f), "shown_label": name, "true_name": ""})
+                rows.append({"frame": int(f), "row": match, "shown_label": name, "true_name": ""})
+        others = sorted((r for r in candidates if int(r) not in used), key=lambda r: det.box[r, 0] + det.box[r, 2])
+        for n, r in enumerate(others, start=1):
+            x1, y1, x2, y2 = det.box[r].astype(int)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (160, 160, 160), 1)
+            cv2.putText(frame, f"?{n}", (x1, max(20, y1 - 8)), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (160, 160, 160), 2)
+            rows.append({"frame": int(f), "row": int(r), "shown_label": f"?{n}", "true_name": ""})
         cv2.imwrite(str(out / f"frame_{int(f):06d}.jpg"), frame)
+    cap.release()
     with open(out / "ids.csv", "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["frame", "shown_label", "true_name"])
+        writer = csv.DictWriter(handle, fieldnames=["frame", "row", "shown_label", "true_name"])
         writer.writeheader()
         writer.writerows(rows)
-    print(f"{len(picks)} frames in {out}. Fill in true_name in ids.csv, then run: syncscore audit-score {out / 'ids.csv'}")
+    print(f"{len(picks)} frames in {out}. Fill in true_name in ids.csv (dancer for anyone who is not a member), "
+          f"then run: syncscore audit-score {out / 'ids.csv'}")
     print("These frames contain the source footage: they stay in results/ (git-ignored) and must not be committed.")
     return 0
 
@@ -276,6 +295,8 @@ def main(argv: list[str] | None = None) -> int:
     audit.add_argument("video")
     audit.add_argument("--results", default="results")
     audit.add_argument("--frames", type=int, default=30)
+    audit.add_argument("--times", nargs="*", default=[], help="windows to sample densely, in seconds, e.g. 148-150")
+    audit.add_argument("--step", type=float, default=0.2, help="seconds between frames inside a window")
     audit.set_defaults(run=_audit)
 
     audit_score = commands.add_parser("audit-score", help="Score a filled-in audit CSV")
