@@ -39,23 +39,50 @@ def _analyze(args: argparse.Namespace) -> int:
         det = extract(video, config, info.n_frames, info.fps, info.size)
         det.save(cached)
     min_conf = config.pose.min_keypoint_conf
-    members = config.tracking.members or count_members(det, min_conf)
-    if members < 2:
-        print(f"Found {members} clearly visible people; need at least 2 (set tracking.members in the config).", file=sys.stderr)
-        return 3
+    if args.pose_only:
+        from .pose.prepare import prepare
+
+        prepare(video, out, det, config, info=info)
+        suggested = json.loads((out / "pick_frames.json").read_text(encoding="utf-8"))["suggested"]
+        print(f"ready to name the members (suggested frames: {', '.join(map(str, suggested))})")
+        return 0
     tracklets = build_tracklets(det, min_frames=max(3, int(0.3 * info.fps)))
-    tracks = assemble(det, assign_members(det, tracklets, members, config.tracking.stitch_max_gap_s))
+    following = fingerprinter = allow = None
+    if args.members:
+        from .pose.fingerprint import Fingerprinter
+        from .pose.identity import allow_for, follow_members
+        from .pose.picks import PickError, load_picks, resolve_picks
+        from .pose.prepare import prepare
+
+        try:
+            picks = load_picks(args.members, det.n_frames)
+            picked_rows = resolve_picks(picks, det)
+        except PickError as error:
+            print(error, file=sys.stderr)
+            return 2
+        camera, det.vectors = prepare(video, out, det, config, info=info)
+        following = follow_members(det, tracklets, camera, picked_rows, config)
+        tracks = assemble(det, following.slots, keep_order=True)
+        allow = allow_for(following.recognizer)
+        fingerprinter = Fingerprinter.load(config.identity.model) if config.tracking.recover else None
+        names = [pick.name for pick in picks.members]
+    else:
+        members = config.tracking.members or count_members(det, min_conf)
+        if members < 2:
+            print(f"Found {members} clearly visible people; need at least 2 (set tracking.members in the config).", file=sys.stderr)
+            return 3
+        tracks = assemble(det, assign_members(det, tracklets, members, config.tracking.stitch_max_gap_s))
+        names = [f"M{i + 1}" for i in range(len(tracks.xy))]
     # Occlusion: fill members' short gaps with real detections, first ones the assignment left
     # unused, then from a more sensitive second look at just the frames still missing someone.
     cache = out / "recovered.npz"
     if args.redo_pose:
         cache.unlink(missing_ok=True)
-    second_look = (lambda frames: redetect(video, frames, config, cache, info.size, info.fps, det.n_frames)) if config.tracking.recover else None
-    tracks, filling = fill_occlusions(det, tracks, config.tracking.fill_max_gap_s, min_conf, second_look)
+    second_look = (lambda frames: redetect(video, frames, config, cache, info.size, info.fps, det.n_frames,
+                                           fingerprinter)) if config.tracking.recover else None
+    tracks, filling = fill_occlusions(det, tracks, config.tracking.fill_max_gap_s, min_conf, second_look, allow)
     before, after = filling["before"], filling["after"]
     from_leftovers, from_redetection = filling["filled_from_leftovers"], filling["filled_from_redetection"]
-    swaps = suspected_swaps(tracks.hist, tracks.box, info.fps, config.tracking.crossing_iou)
-    names = [f"M{i + 1}" for i in range(len(tracks.xy))]
     np.savez_compressed(out / "keypoints_raw.npz", xy=tracks.xy.astype(np.float32), conf=tracks.conf.astype(np.float32),
                         box=tracks.box.astype(np.float32), fps=info.fps, names=np.array(names))
 
@@ -69,10 +96,25 @@ def _analyze(args: argparse.Namespace) -> int:
         "fragments": {n: f for n, f in zip(names, tracks.fragments)},
         "rejoins": int(sum(len(f) - 1 for f in tracks.fragments)),
         "visible_share": {n: round(float(v.mean()), 3) for n, v in zip(names, visible)},
-        "suspected_swaps": [{**s, "members": [names[k] for k in s["members"]]} for s in swaps],
-        "suspected_swaps_per_minute": round(len(swaps) / (info.n_frames / info.fps / 60), 3),
-        "note": "Suspected swaps come from clothing colour at crossings and miss swaps between members in matching outfits. "
-                "The true rate comes from `syncscore audit` (hand-labelled frames).",
+    }
+    if following is None:
+        swaps = suspected_swaps(tracks.hist, tracks.box, info.fps, config.tracking.crossing_iou)
+        report |= {
+            "suspected_swaps": [{**s, "members": [names[k] for k in s["members"]]} for s in swaps],
+            "suspected_swaps_per_minute": round(len(swaps) / (info.n_frames / info.fps / 60), 3),
+            "note": "Suspected swaps come from clothing colour at crossings and miss swaps between members in matching outfits. "
+                    "The true rate comes from `syncscore audit` (hand-labelled frames).",
+        }
+    else:
+        found = following.report
+        report["identity"] = {
+            "picked_frame": found["picked_frame"], "model": config.identity.model,
+            "tracked_share": {n: round(float((tracks.rows[i] >= 0).mean()), 3) for i, n in enumerate(names)},
+            "splits": found["splits"],
+            "close_calls": [{**c, "member": None if c["member"] is None else names[c["member"]]} for c in found["close_calls"]],
+            "position_rejections": [{**r, "member": names[r["member"]]} for r in found["position_rejections"]],
+        }
+    report |= {
         "variable_frame_rate_resampled": info.variable,
         "coverage": {"before": before, "after": after, "filled_from_leftovers": from_leftovers, "filled_from_redetection": from_redetection},
     }
@@ -81,7 +123,11 @@ def _analyze(args: argparse.Namespace) -> int:
     best = int(np.argmax(visible.sum(axis=1)))
     raw = np.where((conf[best, :, 9] >= min_conf)[:, None], xy[best, :, 9], np.nan)
     render_smoothing_plot(raw, xy_s[best, :, 9], fps, out / "smoothing_example.png", f"{names[best]} left wrist: raw vs smoothed")
-    print(f"  {len(names)} members, {report['rejoins']} broken tracks rejoined, {len(swaps)} suspected ID swaps")
+    if following is None:
+        print(f"  {len(names)} members, {report['rejoins']} broken tracks rejoined, {len(swaps)} suspected ID swaps")
+    else:
+        print(f"  {len(names)} members followed by name from frame {following.report['picked_frame']}, "
+              f"{len(following.report['splits'])} tracks split where they changed hands")
     print(f"  everyone tracked in {after['all_members_share']:.1%} of frames (was {before['all_members_share']:.1%}); "
           f"filled {from_leftovers} member-frames from unused detections, {from_redetection} from re-detection")
     print(f"results in {out}")
@@ -326,6 +372,11 @@ def main(argv: list[str] | None = None) -> int:
     analyze.add_argument("video")
     analyze.add_argument("--out", default="results")
     analyze.add_argument("--redo-pose", action="store_true", help="ignore cached detections")
+    naming = analyze.add_mutually_exclusive_group()
+    naming.add_argument("--pose-only", action="store_true",
+                        help="find people, follow the camera and fingerprint them, then stop: ready to pick the members")
+    naming.add_argument("--members", default=None, metavar="PICKS",
+                        help="a picks file (frame and a named box per member): follow those members by name")
     analyze.set_defaults(run=_analyze)
 
     validate = commands.add_parser("validate", help="Run the synthetic recovery benchmark")

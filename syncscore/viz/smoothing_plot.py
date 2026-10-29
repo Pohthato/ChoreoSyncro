@@ -35,7 +35,9 @@ def render_smoothing_plot(raw: np.ndarray, smooth: np.ndarray, fps: float, path:
     top.set_ylabel("x position (px)")
     top.set_title(title, loc="left")
     top.legend(frameon=False, loc="upper left")
-    speed = lambda p: np.linalg.norm(np.diff(p[start:stop + 1], axis=0), axis=-1) * fps
+    def speed(p: np.ndarray) -> np.ndarray:  # one value per time in t; the clip's last frame has none
+        v = np.linalg.norm(np.diff(p[start:stop + 1], axis=0), axis=-1) * fps
+        return np.concatenate([v, np.full(len(t) - len(v), np.nan)])
     bottom.plot(t, speed(raw)[: len(t)], color=SERIES[1], lw=1.2, label="raw")
     bottom.plot(t, speed(smooth)[: len(t)], color=SERIES[0], lw=2, label="smoothed")
     bottom.set_ylabel("speed (px/s)")

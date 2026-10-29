@@ -47,3 +47,11 @@ def test_summary_names_the_planted_errors(written):
     assert members["M2"]["worst_shape_moments"][0]["bone"] == "right_shin"
     assert members["M1"]["shape_part_most_often_off"] is None
     assert len(summary["members"][0]["sections"]) == 1  # 16 s clip, 32 s sections
+
+
+def test_the_smoothing_plot_draws_a_clip_no_longer_than_its_window(tmp_path):
+    from syncscore.viz.smoothing_plot import render_smoothing_plot
+
+    raw = np.cumsum(np.ones((90, 2)), axis=0)  # 3 s: the whole clip is the window
+    render_smoothing_plot(raw, raw, 30.0, tmp_path / "plot.png", "short clip")
+    assert (tmp_path / "plot.png").exists()
