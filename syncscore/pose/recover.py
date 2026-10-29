@@ -20,6 +20,7 @@ import numpy as np
 from ..config import Config
 from .fill import expected_box
 from .tracks import Detections, MemberTracks
+from .video import read_frames
 
 
 def frames_to_recover(tracks: MemberTracks, fps: float, max_gap_s: float) -> np.ndarray:
@@ -66,24 +67,6 @@ def _cache_matches(path: Path, frames: np.ndarray, config: Config) -> bool:
         return np.array_equal(data["recover_frames"], frames) and np.array_equal(data["recover_settings"], _settings(config))
 
 
-def _read_frames(cap, frames: np.ndarray):
-    """Yield (frame index, image) for exactly `frames`, decoding the video in order.
-
-    Seeking by index (CAP_PROP_POS_FRAMES) turns the index into a time with the *average* frame
-    rate, so on variable-frame-rate phone video it can land a frame or more away, and that pose
-    would be scored as the wrong moment. extract() numbers frames in decode order, so this does
-    too: grab every frame, decode only the wanted ones."""
-    wanted = set(int(f) for f in frames)
-    last = max(wanted, default=-1)
-    index = -1
-    while index < last and cap.grab():
-        index += 1
-        if index in wanted:
-            ok, image = cap.retrieve()
-            if ok:
-                yield index, image
-
-
 def redetect(video: str | Path, frames: np.ndarray, config: Config, cache: Path, size: tuple, fps: float, n_frames: int) -> Detections:
     """Run the pose model on exactly `frames` at config.tracking.recover_conf / recover_imgsz."""
     cache = Path(cache)
@@ -97,7 +80,7 @@ def redetect(video: str | Path, frames: np.ndarray, config: Config, cache: Path,
     model = YOLO(config.pose.model)
     cap = cv2.VideoCapture(str(video))
     rows = {"frame": [], "box": [], "box_conf": [], "xy": [], "kconf": [], "hist": []}
-    for n, (f, image) in enumerate(_read_frames(cap, frames)):
+    for n, (f, image) in enumerate(read_frames(cap, frames)):
         result = model.predict(image, conf=config.tracking.recover_conf, imgsz=config.tracking.recover_imgsz,
                                device=config.pose.device, verbose=False)[0]
         if result.boxes is None or result.keypoints is None:

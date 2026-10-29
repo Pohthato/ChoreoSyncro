@@ -22,3 +22,14 @@ def test_cli_survives_a_non_ascii_video_name(tmp_path, capsys):
 
     missing = tmp_path / "방탄소년단 dance.mp4"
     assert main(["analyze", str(missing), "--out", str(tmp_path / "out")]) == 2
+
+
+def test_identity_settings_load_and_reject_unknown_keys(tmp_path):
+    from syncscore.pose.fingerprint import MODELS
+
+    identity = load_config().identity
+    assert identity.rounds == 3 and identity.free_after_s == 3.0 and identity.model in MODELS
+    bad = tmp_path / "bad.yaml"
+    bad.write_text("identity:\n  margin: 0.1\n")
+    with pytest.raises(ValueError, match="IdentityConfig"):
+        load_config(bad)

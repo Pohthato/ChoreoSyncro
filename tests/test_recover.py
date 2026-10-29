@@ -94,7 +94,7 @@ class _VariableRateVideo:
 
 
 def test_frames_are_read_in_decode_order_not_by_seeking():
-    from syncscore.pose.recover import _read_frames
+    from syncscore.pose.video import read_frames
 
-    got = {f: int(image[0, 0, 0]) for f, image in _read_frames(_VariableRateVideo(20), np.array([3, 4, 11]))}
+    got = {f: int(image[0, 0, 0]) for f, image in read_frames(_VariableRateVideo(20), np.array([3, 4, 11]))}
     assert got == {3: 3, 4: 4, 11: 11}

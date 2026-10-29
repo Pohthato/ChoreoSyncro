@@ -81,3 +81,13 @@ hits:
 render:
   in_sync_ms: 35              # |offset| at or below this is drawn green
   off_sync_ms: 135            # |offset| at or above this is drawn red
+
+identity:
+  # Following members picked by name (analyze --members, syncscore/pose/identity.py).
+  model: youtu                # re-ID model: youtu (107 MB) or youtu-int8 (27 MB), downloaded on first use
+  name_margin: 0.05           # a piece gets a member's name only if she beats the next best by this much
+  learn_margin: 0.10          # ...and is learned from only if she beats it by this much
+  rounds: 3                   # learning rounds
+  split_distance: 0.35        # a tracklet whose fingerprints change this much across a crossing is split there
+  position_gate: 3.0          # refuse a piece this far (Mahalanobis) from where the member's motion predicts
+  free_after_s: 3.0           # after this long unseen, she can come back anywhere

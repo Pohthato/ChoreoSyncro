@@ -7,6 +7,7 @@ an even clock before measuring anything.
 """
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -58,3 +59,21 @@ def resample_uniform(xy: np.ndarray, conf: np.ndarray, times_ms: np.ndarray, fps
     out_xy = (1 - w) * xy[:, lo] + w * xy[:, hi]
     out_conf = np.minimum(conf[:, lo], conf[:, hi])
     return out_xy, out_conf, grid
+
+
+def read_frames(cap, frames: np.ndarray) -> Iterator[tuple[int, np.ndarray]]:
+    """Yield (frame index, image) for exactly `frames`, decoding the video in order.
+
+    Seeking by index (CAP_PROP_POS_FRAMES) turns the index into a time with the *average* frame
+    rate, so on variable-frame-rate phone video it can land a frame or more away, and that pose
+    would be scored as the wrong moment. extract() numbers frames in decode order, so this does
+    too: grab every frame, decode only the wanted ones."""
+    wanted = set(int(f) for f in frames)
+    last = max(wanted, default=-1)
+    index = -1
+    while index < last and cap.grab():
+        index += 1
+        if index in wanted:
+            ok, image = cap.retrieve()
+            if ok:
+                yield index, image

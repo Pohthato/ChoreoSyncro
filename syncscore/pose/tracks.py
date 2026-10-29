@@ -30,6 +30,7 @@ which is why the true swap rate comes from a small hand-labelled audit (`syncsco
 from __future__ import annotations
 
 import csv
+import hashlib
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -50,6 +51,7 @@ class Detections:
     fps: float
     n_frames: int
     image_size: tuple
+    vectors: np.ndarray | None = None  # (N, D) re-ID fingerprints (zeros if no usable crop); kept in fingerprints.npz, not here
 
     def save(self, path) -> None:
         np.savez_compressed(path, frame=self.frame, track_id=self.track_id, box=self.box, box_conf=self.box_conf, xy=self.xy,
@@ -60,6 +62,13 @@ class Detections:
         d = np.load(path)
         return cls(d["frame"], d["track_id"], d["box"], d["box_conf"], d["xy"], d["kconf"], d["hist"],
                    float(d["fps"]), int(d["n_frames"]), tuple(int(v) for v in d["image_size"]))
+
+
+def detections_key(det: Detections) -> str:
+    """Identifies a set of detections, so caches computed from them can tell when they are stale."""
+    digest = hashlib.sha1(det.frame.astype(np.int64).tobytes())
+    digest.update(det.box.astype(np.float64).tobytes())
+    return digest.hexdigest()[:16]
 
 
 @dataclass
