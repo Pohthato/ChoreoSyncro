@@ -26,3 +26,17 @@ def test_probe_reads_a_constant_rate_video(tmp_path):
     assert abs(info.fps - 25.0) < 0.1
     assert info.size == (64, 48)
     assert not info.variable
+
+
+def test_read_frame_finds_a_frame_by_its_time(tmp_path):
+    from syncscore.pose.video import read_frame
+
+    video = tmp_path / "grey.mp4"
+    writer = cv2.VideoWriter(str(video), cv2.VideoWriter_fourcc(*"mp4v"), 30.0, (64, 48))
+    for k in range(25):
+        writer.write(np.full((48, 64, 3), 10 + 8 * k, np.uint8))
+    writer.release()
+    times = probe(video).times_ms
+    for frame, grey in ((0, 10), (17, 146), (24, 202)):
+        assert abs(float(read_frame(video, frame, times).mean()) - grey) <= 4, frame
+    assert read_frame(video, 25, times) is None

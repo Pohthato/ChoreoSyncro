@@ -45,6 +45,41 @@ def probe(path: str | Path) -> VideoInfo:
     return VideoInfo(fps=fps, n_frames=len(times), size=size, times_ms=times, variable=variable)
 
 
+def read_frame(video, frame: int, times_ms: np.ndarray) -> np.ndarray | None:
+    """Frame `frame` of `video` (BGR), found by its timestamp in `times_ms` (from `probe`); None
+    when the video has no such frame.
+
+    Seeking lands on a keyframe near the asked time, often before it and sometimes past it. So it
+    seeks a little early and decodes on until the timestamp is the frame's own; if it still landed
+    past the frame it seeks from further back, and last of all reads from the start."""
+    times_ms = np.asarray(times_ms, dtype=float)
+    if not 0 <= frame < len(times_ms):
+        return None
+    target = times_ms[frame]
+    half = 0.5 * float(np.median(np.diff(times_ms))) if len(times_ms) > 1 else 1.0
+    for preroll in (2000.0, 8000.0, None):
+        cap = cv2.VideoCapture(str(video))
+        try:
+            if not cap.isOpened():
+                return None
+            if preroll is not None:
+                cap.set(cv2.CAP_PROP_POS_MSEC, max(0.0, target - preroll))
+            if not cap.grab():
+                continue
+            t = cap.get(cv2.CAP_PROP_POS_MSEC)
+            if t > target + half:  # landed past it: back off further
+                continue
+            while t < target - half:
+                if not cap.grab():
+                    return None
+                t = cap.get(cv2.CAP_PROP_POS_MSEC)
+            ok, image = cap.retrieve()
+            return image if ok else None
+        finally:
+            cap.release()
+    return None
+
+
 def resample_uniform(xy: np.ndarray, conf: np.ndarray, times_ms: np.ndarray, fps: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Member keypoints sampled at uneven times -> an even clock at `fps`.
 

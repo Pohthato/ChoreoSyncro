@@ -7,8 +7,12 @@ Routes:
   GET  /                              the start page (page/)
   GET  /api/uploads                   every upload, newest first
   GET  /api/uploads/<id>              one upload: step, progress, error, end of the log
-  POST /api/uploads?name=&members=    the request body is the video; starts its analysis
-  POST /api/uploads/<id>/run?members= analyse an upload again
+  POST /api/uploads?name=&members=    the request body is the video; starts finding its people
+  GET  /api/uploads/<id>/people?frame=<n>   the people found in frame n (boxes, left to right)
+  GET  /api/uploads/<id>/frame/<n>.jpg      frame n as a JPEG, the frame those boxes belong to
+  POST /api/uploads/<id>/picks        the named members (JSON); measures with them
+  POST /api/uploads/<id>/repick       name the members again
+  POST /api/uploads/<id>/run?members= measure without names (members told apart left to right)
   GET  /uploads/<id>/viewer/          that upload's viewer
   GET  /uploads/<id>/video.mp4        the video, with byte ranges so the page can seek
 
@@ -28,7 +32,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlsplit
 
-from .jobs import ID, VIDEO, Runner, UploadError, Uploads, commands
+from .jobs import ID, MAX_PICKS, VIDEO, NoSuchFrame, NotReady, Runner, UploadError, Uploads, commands
 
 PAGE_DIR = Path(__file__).resolve().parent / "page"
 TYPES = {".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -100,6 +104,9 @@ class Handler(BaseHTTPRequestHandler):
         except HttpError as error:
             self._drain()
             self._json(error.status, {"error": str(error)}, head)
+        except (NotReady, NoSuchFrame) as error:
+            self._drain()
+            self._json(409 if isinstance(error, NotReady) else 404, {"error": str(error)}, head)
         except UploadError as error:
             self._drain()
             self._json(400, {"error": str(error)}, head)
@@ -121,6 +128,13 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(200, {"uploads": [describe(j, with_log=False) for j in uploads.list()]}, head)
         if found := re.fullmatch(r"/api/uploads/([^/]+)", path):
             return self._json(200, describe(self._job(found[1])), head)
+        if found := re.fullmatch(r"/api/uploads/([^/]+)/people", path):
+            self._job(found[1])
+            frame = (parse_qs(urlsplit(self.path).query).get("frame") or [""])[0]
+            return self._json(200, uploads.people(found[1], frame), head)
+        if found := re.fullmatch(r"/api/uploads/([^/]+)/frame/([^/]+)\.jpg", path):
+            self._job(found[1])
+            return self._bytes(uploads.frame_jpeg(found[1], found[2]), "image/jpeg", head)
         if found := re.fullmatch(r"/uploads/([^/]+)/video\.mp4", path):
             self._job(found[1])
             return self._video(uploads.folder(found[1]) / VIDEO, head)
@@ -157,6 +171,28 @@ class Handler(BaseHTTPRequestHandler):
             print(f"upload {job['id']}: {name} ({length / 1e6:.1f} MB), analysing", file=sys.stderr)
             self.server.runner.submit(job["id"])
             return self._json(201, describe(job), head)
+        if found := re.fullmatch(r"/api/uploads/([^/]+)/picks", url.path):
+            self._job(found[1])
+            if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+                raise HttpError(415, "Send the picks as JSON.")
+            if self._body_left > MAX_PICKS:
+                self._body_left = 0  # not worth reading through: just close the connection
+                raise HttpError(413, "The picks are too large.")
+            body, self._body_left = self.rfile.read(self._body_left), 0
+            try:
+                data = json.loads(body.decode("utf-8"))
+            except (UnicodeDecodeError, ValueError):
+                raise HttpError(400, "The picks aren't valid JSON.") from None
+            job = uploads.save_picks(found[1], data)
+            print(f"upload {job['id']}: members named, measuring", file=sys.stderr)
+            self.server.runner.submit(job["id"])
+            return self._json(202, describe(job), head)
+        if found := re.fullmatch(r"/api/uploads/([^/]+)/repick", url.path):
+            self._job(found[1])
+            job = uploads.repick(found[1])
+            if job["status"] == "queued":
+                self.server.runner.submit(job["id"])
+            return self._json(202, describe(job), head)
         if found := re.fullmatch(r"/api/uploads/([^/]+)/run", url.path):
             self._job(found[1])
             job = uploads.again(found[1], members)
@@ -197,6 +233,15 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(data).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        if not head:
+            self.wfile.write(body)
+
+    def _bytes(self, body: bytes, content_type: str, head: bool) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
