@@ -60,6 +60,20 @@ def test_batches_give_the_same_vectors_as_one_at_a_time():
     assert np.allclose(together, alone, atol=1e-6)
 
 
+class MixingNet(MeanNet):  # like the YouTu graph under cv2.dnn: a batch's crops bleed into each other
+    def forward(self):
+        means = self.blob.mean(axis=(2, 3))
+        return means + means.mean(axis=0)
+
+
+def test_a_crop_gets_the_same_vector_whatever_else_is_gathered_with_it():
+    rng = np.random.default_rng(1)
+    crops = [rng.integers(0, 256, (60, 30, 3), dtype=np.uint8) for _ in range(4)]
+    together = Fingerprinter(MixingNet(), batch=4)(crops)
+    alone = np.vstack([Fingerprinter(MixingNet())([c]) for c in crops])
+    assert np.allclose(together, alone, atol=1e-6)
+
+
 def test_crop_is_clipped_to_the_frame_and_none_when_tiny():
     frame = np.zeros((100, 200, 3), np.uint8)
     assert crop(frame, np.array([150.0, 10, 260, 90])).shape == (80, 50, 3)

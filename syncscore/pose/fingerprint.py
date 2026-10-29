@@ -72,7 +72,9 @@ def crop(frame: np.ndarray, box: np.ndarray) -> np.ndarray | None:
 
 
 class Fingerprinter:
-    """BGR crops -> unit-length fingerprints, `batch` crops per network call."""
+    """BGR crops -> unit-length fingerprints. Callers gather `batch` crops per call, but the network
+    sees one crop at a time: run as a batch under cv2.dnn the YouTu graph mixes the crops, and a
+    fingerprint's cosine to its one-at-a-time self fell as low as -0.16 on the aespa clip."""
 
     def __init__(self, net, batch: int = 64):
         self.net = net
@@ -85,11 +87,11 @@ class Fingerprinter:
 
     def __call__(self, crops: list[np.ndarray]) -> np.ndarray:
         out = []
-        for start in range(0, len(crops), self.batch):
-            blob = cv2.dnn.blobFromImages(crops[start:start + self.batch], 1 / 255, INPUT_SIZE, swapRB=True)
+        for c in crops:
+            blob = cv2.dnn.blobFromImage(c, 1 / 255, INPUT_SIZE, swapRB=True)
             blob = (blob - MEAN[None, :, None, None]) / STD[None, :, None, None]
             self.net.setInput(blob.astype(np.float32))
-            v = np.asarray(self.net.forward(), dtype=np.float32).reshape(len(blob), -1)
+            v = np.asarray(self.net.forward(), dtype=np.float32).reshape(1, -1)
             norm = np.linalg.norm(v, axis=1, keepdims=True)
             out.append(np.divide(v, norm, out=np.zeros_like(v), where=norm > 0))
             self.dim = v.shape[1]
