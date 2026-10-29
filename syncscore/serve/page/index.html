@@ -34,12 +34,40 @@
         <ol class="steps" id="steps">
           <li data-step="upload">Upload</li>
           <li data-step="pose">Find every dancer's pose</li>
+          <li data-step="pick">Name the members</li>
           <li data-step="measure">Track and measure</li>
           <li data-step="view">Build the viewer</li>
         </ol>
         <progress id="bar" max="1" hidden></progress>
         <p id="detail" class="detail" aria-live="polite"></p>
         <p id="job-error" class="error" role="alert" hidden></p>
+
+        <section id="picking" class="picking" aria-labelledby="pick-title" hidden>
+          <h3 id="pick-title">Name the members</h3>
+          <p class="hint">Click a person, type their name, press Enter. Name at least two.</p>
+          <div id="suggested" class="suggested" role="group" aria-label="Suggested frames"></div>
+          <figure class="frame">
+            <img id="frame-img" alt="">
+            <div id="boxes" class="boxes"></div>
+            <form id="name-form" class="name-form" hidden>
+              <input id="name-input" type="text" autocomplete="off" spellcheck="false">
+              <button type="submit">OK</button>
+            </form>
+          </figure>
+          <label class="slider">
+            <span>Frame</span>
+            <input type="range" id="frame-slider" min="0" max="0" step="1" value="0">
+            <output id="frame-time" for="frame-slider"></output>
+          </label>
+          <p id="frame-note" class="hint" hidden>Names belong to this frame; picking another frame clears them.</p>
+          <ol id="named" class="named" aria-label="Named members" hidden></ol>
+          <p id="pick-error" class="error" role="alert" hidden></p>
+          <div class="actions">
+            <button type="button" id="continue" class="primary" disabled>Continue</button>
+            <button type="button" id="no-names">Measure without names</button>
+          </div>
+        </section>
+
         <details id="log-box" hidden>
           <summary>Log</summary>
           <pre id="log"></pre>
@@ -65,9 +93,12 @@
         <label>Members <input type="number" min="0" max="50" step="1" inputmode="numeric"></label>
         <button type="submit">Run again</button>
       </form>
+      <button type="button" class="repick">Pick again</button>
     </li>
   </template>
 
+  <script src="/static/picker_core.js"></script>
+  <script src="/static/picker.js"></script>
   <script src="/static/start.js"></script>
 </body>
 </html>

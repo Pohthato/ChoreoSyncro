@@ -13,6 +13,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* the page's own display rules must not show hidden parts */
 
 body {
   margin: 0;
@@ -117,3 +118,59 @@ a.name { cursor: pointer; }
 .again { display: flex; align-items: center; gap: 8px; color: var(--ink-2); font-size: 13px; }
 .again input { width: 4.5em; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
 .again button { padding: 3px 10px; }
+.row > .repick { padding: 3px 10px; font-size: 13px; }
+
+/* Naming the members: the frame with a box per person, the name form, the frame slider. */
+.picking { margin-top: 14px; display: grid; gap: 10px; }
+.picking h3 { margin: 0; }
+.suggested { display: flex; flex-wrap: wrap; gap: 6px; }
+.suggested button { padding: 3px 10px; font-size: 13px; }
+.frame { position: relative; margin: 0; background: var(--ink); border-radius: 4px; overflow: hidden; }
+.frame img { display: block; width: 100%; height: auto; }
+.boxes { position: absolute; inset: 0; }
+.person {
+  position: absolute;
+  padding: 0;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 2px;
+  background: transparent;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.45);
+}
+.person:hover { border-color: #fff; background: rgba(255, 255, 255, 0.12); }
+.person.named { border-color: var(--good); }
+.person.editing { border-color: var(--cue); }
+.person:focus-visible { outline: 3px solid var(--cue); outline-offset: 2px; }
+.tag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  max-width: 14em;
+  padding: 1px 6px;
+  background: var(--good);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.name-form {
+  position: absolute;
+  z-index: 1000;
+  display: flex;
+  gap: 4px;
+  margin: 4px 0;
+  padding: 4px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.name-form input { width: 10em; padding: 3px 6px; border: 1px solid var(--line); border-radius: 4px; background: #fff; }
+.name-form button { padding: 3px 10px; }
+.slider { display: flex; align-items: center; gap: 10px; color: var(--ink-2); }
+.slider input { flex: 1; min-width: 0; accent-color: var(--cue); }
+.slider output { min-width: 4.5em; text-align: right; }
+.named { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0; padding: 0 0 0 1.4em; }
+.named li { display: flex; align-items: center; gap: 6px; }
+.named button { padding: 1px 8px; font-size: 13px; }
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }

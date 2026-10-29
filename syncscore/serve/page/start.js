@@ -1,8 +1,9 @@
-// SyncScore start page: upload a video, follow its analysis, open its viewer when it is done.
+// SyncScore start page: upload a video, follow its analysis, name its members (picker.js), open
+// its viewer when it is done.
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
-  const STEPS = ["upload", "pose", "measure", "view"];
+  const STEPS = ["upload", "pose", "pick", "measure", "view"];
   let watching = null;       // the upload shown in the job panel
   let sawUnfinished = false; // go to the viewer only after watching it finish, never on a reload
   let timer = null;
@@ -48,10 +49,17 @@
   function showJob(job) {
     $("job").hidden = false;
     $("job-name").textContent = job.name;
-    const done = job.status === "done", failed = job.status === "failed";
-    setSteps(job.status === "queued" ? "pose" : job.step, done);
-    if (job.status === "queued") $("steps").querySelector('[data-step="pose"]').classList.remove("now");
-    if (done) {
+    const done = job.status === "done", failed = job.status === "failed", picking = job.status === "picking";
+    const first = job.phase === "picked" ? "measure" : "pose";
+    $("steps").querySelector('[data-step="pick"]').hidden = job.phase === "plain"; // measured without names
+    setSteps(job.status === "queued" ? first : job.step, done);
+    if (job.status === "queued") $("steps").querySelector(`[data-step="${first}"]`).classList.remove("now");
+    if (picking) window.Picker.show(job, watch);
+    else window.Picker.hide();
+    if (picking) {
+      $("bar").hidden = true;
+      $("detail").textContent = "";
+    } else if (done) {
       $("bar").hidden = true;
       const link = document.createElement("a");
       link.href = job.viewer;
@@ -87,6 +95,7 @@
     if (job.status === "done") return `Done, ${job.members ? job.members + " members" : "members counted from the video"}`;
     if (job.status === "failed") return "Failed: " + (job.error || "it stopped");
     if (job.status === "queued") return "Waiting its turn";
+    if (job.status === "picking") return "Waiting for the members to be named";
     const p = job.progress;
     return job.detail + (p && p[1] ? ` (${Math.floor((100 * p[0]) / p[1])}%)` : "");
   }
@@ -113,10 +122,15 @@
         input.setAttribute("aria-label", `Members for ${job.name}`);
         again.addEventListener("submit", (event) => { event.preventDefault(); runAgain(job.id, input.value); });
       } else again.remove();
+      const repick = row.querySelector(".repick");
+      if (job.status === "done" || job.status === "failed") {
+        repick.setAttribute("aria-label", `Pick the members of ${job.name} again`);
+        repick.addEventListener("click", () => pickAgain(job.id));
+      } else repick.remove();
       return row;
     });
-    // Leave the list alone while someone is typing a member count in it.
-    if (!document.activeElement || !document.activeElement.matches("#list input")) $("list").replaceChildren(...rows);
+    // Leave the list alone while someone is typing a member count in it, or has a button in it focused.
+    if (!document.activeElement || !document.activeElement.matches("#list input, #list button")) $("list").replaceChildren(...rows);
   }
 
   async function getJson(url, options) {
@@ -156,6 +170,16 @@
     sawUnfinished = false;
     history.replaceState(null, "", "#" + id);
     tick();
+  }
+
+  async function pickAgain(id) {
+    try {
+      await getJson(`/api/uploads/${id}/repick`, { method: "POST" });
+      watch(id);
+    } catch (error) {
+      $("job").hidden = false;
+      showError(error.message);
+    }
   }
 
   async function runAgain(id, members) {
