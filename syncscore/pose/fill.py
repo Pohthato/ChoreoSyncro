@@ -104,8 +104,11 @@ def accept(candidate_box: np.ndarray, candidate_xy: np.ndarray, candidate_conf: 
     return float(jump + 0.5 * abs(np.log(ratio)))
 
 
-def fill_gaps(det, tracks, max_gap_s: float, min_keypoint_conf: float):
+def fill_gaps(det, tracks, max_gap_s: float, min_keypoint_conf: float, allow=None):
     """Fill members' short gaps with detections no member uses. Returns (new tracks, frames filled).
+
+    `allow(det, member, row)`, when given, must also say yes (e.g. the row's fingerprint names
+    that member); `accept` stays the position test.
 
     Per frame, every (missing member, unused detection) pair is scored with `accept` and the
     cheapest is filled; then the rest are scored again with that member now present. Scoring all
@@ -122,6 +125,16 @@ def fill_gaps(det, tracks, max_gap_s: float, min_keypoint_conf: float):
     by_frame = np.split(np.argsort(det.frame, kind="stable"), np.cumsum(np.bincount(det.frame, minlength=det.n_frames))[:-1])
     filled = 0
     members = len(out.rows)
+    allowed: dict[tuple[int, int], bool] = {}
+
+    def cost_of(i: int, r: int, o_box, o_xy, o_conf) -> float:
+        if allow is not None:
+            if (i, r) not in allowed:
+                allowed[i, r] = bool(allow(det, i, r))
+            if not allowed[i, r]:
+                return np.inf
+        return accept(det.box[r], det.xy[r], det.kconf[r], expected[i], o_box, o_xy, o_conf, min_keypoint_conf)
+
     for f in np.flatnonzero((out.rows < 0).any(axis=0)):
         missing = [i for i in range(members) if out.rows[i, f] < 0]
         expected = {i: expected_box(tracks.box, i, f, max_gap) for i in missing}
@@ -130,8 +143,7 @@ def fill_gaps(det, tracks, max_gap_s: float, min_keypoint_conf: float):
         while missing and candidates:
             present = [i for i in range(members) if out.rows[i, f] >= 0]
             o_box, o_xy, o_conf = out.box[present, f], out.xy[present, f], out.conf[present, f]
-            cost, i, r = min((accept(det.box[r], det.xy[r], det.kconf[r], expected[i], o_box, o_xy, o_conf, min_keypoint_conf), i, r)
-                             for i in missing for r in candidates)
+            cost, i, r = min((cost_of(i, r, o_box, o_xy, o_conf), i, r) for i in missing for r in candidates)
             if not np.isfinite(cost):
                 break
             own = own_keypoints(det.xy[r], det.kconf[r], o_xy, o_conf, float(expected[i][3] - expected[i][1]), min_keypoint_conf)

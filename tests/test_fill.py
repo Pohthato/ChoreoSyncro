@@ -217,3 +217,18 @@ def test_two_members_never_get_the_same_person_in_one_frame():
     filled, count = fill_gaps(det, _tracks(det, 2), max_gap_s=2.0, min_keypoint_conf=0.3)
     assert count == 1
     assert _seen(filled)[:, 50].sum() == 1
+
+
+def test_fill_gaps_skips_candidates_the_acceptance_test_refuses():
+    det = _detections([
+        (1, [f for f in range(100) if not 40 <= f < 46], lambda f: 300, 0),
+        (7, range(40, 46), lambda f: 305, 0),
+        (2, range(100), lambda f: 900, 1),
+    ])
+    tracks = _tracks(det, 2)
+    assert fill_gaps(det, tracks, 2.0, 0.3, allow=lambda d, m, r: False)[1] == 0
+    assert fill_gaps(det, tracks, 2.0, 0.3, allow=None)[1] == 6
+    asked = set()
+    only_7 = lambda d, m, r: asked.add(m) or d.track_id[r] == 7
+    assert fill_gaps(det, tracks, 2.0, 0.3, allow=only_7)[1] == 6
+    assert asked == {0}  # asked about the member whose gap it is
