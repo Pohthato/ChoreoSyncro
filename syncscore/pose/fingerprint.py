@@ -74,7 +74,7 @@ def crop(frame: np.ndarray, box: np.ndarray) -> np.ndarray | None:
 class Fingerprinter:
     """BGR crops -> unit-length fingerprints, `batch` crops per network call."""
 
-    def __init__(self, net, batch: int = 32):
+    def __init__(self, net, batch: int = 64):
         self.net = net
         self.batch = batch
         self.dim = 768  # replaced by the network's real output width on first use
