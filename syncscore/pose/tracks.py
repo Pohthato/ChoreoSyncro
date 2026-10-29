@@ -210,8 +210,8 @@ class MemberTracks:
     rows: np.ndarray  # (M, T) the Detections row each member uses per frame, -1 where unseen
 
 
-def assemble(det: Detections, slots: list[Slot]) -> MemberTracks:
-    """Slots -> per-member arrays, members ordered left to right."""
+def assemble(det: Detections, slots: list[Slot], keep_order: bool = False) -> MemberTracks:
+    """Slots -> per-member arrays, members ordered left to right (or as given, with keep_order)."""
     m, n = len(slots), det.n_frames
     xy = np.full((m, n, 17, 2), np.nan)
     conf = np.zeros((m, n, 17))
@@ -228,7 +228,7 @@ def assemble(det: Detections, slots: list[Slot]) -> MemberTracks:
                     rows[i, f] = row
     # Name members left to right by where they stand, so names are stable and readable.
     with np.errstate(all="ignore"):
-        order = np.argsort([np.nanmedian((box[i, :, 0] + box[i, :, 2]) / 2) for i in range(m)])
+        order = np.arange(m) if keep_order else np.argsort([np.nanmedian((box[i, :, 0] + box[i, :, 2]) / 2) for i in range(m)])
     fragments = [sorted(t.track_id for t in slots[i].tracklets) for i in order]
     return MemberTracks(xy[order], conf[order], box[order], hist[order], fragments, rows[order])
 

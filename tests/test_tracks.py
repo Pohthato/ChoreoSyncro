@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from syncscore.pose.tracks import (
-    Detections, assemble, assign_members, build_tracklets, colour_distance, count_members, score_audit, suspected_swaps,
+    Detections, Slot, assemble, assign_members, build_tracklets, colour_distance, count_members, score_audit, suspected_swaps,
 )
 
 H = 8
@@ -97,6 +97,14 @@ def test_audit_scoring(tmp_path):
     assert result["switches"] == 2
     # M1 is Ann twice and Bo twice (2 match its majority name), M2 is Bo twice and Ann once (2 match).
     assert result["accuracy"] == pytest.approx(4 / 7)
+
+
+def test_assemble_keeps_the_given_order_when_asked():
+    det = _detections([(1, range(20), lambda f: 300, 0), (2, range(20), lambda f: 900, 1)], n_frames=20)
+    left, right = build_tracklets(det, 5)
+    slots = [Slot(tracklets=[right]), Slot(tracklets=[left])]
+    assert assemble(det, slots).fragments == [[1], [2]]
+    assert assemble(det, slots, keep_order=True).fragments == [[2], [1]]
 
 
 def test_named_audit_scores(tmp_path):
