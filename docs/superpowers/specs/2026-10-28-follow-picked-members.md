@@ -82,7 +82,8 @@ be non-empty and distinct.
   `GET /api/uploads/<id>/people?frame=<n>`. Picks are sent with `POST /api/uploads/<id>/picks`,
   which writes `picks.json` and starts step 3.
 - Same fonts, colours and spacing as the viewer. The picking logic that doesn't need the DOM
-  (box hit testing, name validation, suggested-frame ranking) lives in a module tested in Node.
+  (where each box sits and which one is on top, name validation, the picks sent) lives in a
+  module tested in Node. The suggested frames are ranked in Python by `--pose-only`.
 
 ## Camera
 
@@ -111,10 +112,12 @@ New module `syncscore/pose/fingerprint.py`.
   model's input, and run the re-ID model in batches. Save one L2-normalised vector per detection
   row in `fingerprints.npz`. Only numbers are saved, never pixels (as with the colour histograms).
 - Works on old cached `detections.npz`, so a clip never needs pose detection again for this.
-- Candidates: OSNet (made for person re-ID, MSMT17-trained) and OpenCV Zoo's person re-ID model,
-  both run on CPU through ONNX. The gate (below) picks one. Weights download on first use to a
-  cache folder, are checked against a pinned SHA-256, and are never committed. The README names
-  the model, its source and its licence.
+- The model is OpenCV Zoo's person re-identification model (YouTu ReID, Apache-2.0), run on CPU
+  through OpenCV's DNN module. It comes in a full version (fp32, 107 MB) and an 8-bit one (int8,
+  27 MB); the gate (below) picks one. OSNet was the other candidate, but its authors publish no
+  ONNX file, only weights that need the torchreid code, so it was dropped. Weights download on
+  first use to a cache folder, are checked against a pinned SHA-256, and are never committed. The
+  README names the model, its source and its licence.
 - The second look in gap-filling (`recover.py`) computes fingerprints for the detections it adds,
   from the frames it already decodes.
 
@@ -192,7 +195,7 @@ Runs first, before anything else is built. On aespa, hand-label about 30 frames 
 the picked frame's tracklets as examples (with learning rounds), name the labelled detections in
 the other frames. A model passes if at least 95% of member detections get the right name and at
 most 2% of backup-dancer detections get a member's name, including the member dressed in black.
-If neither candidate passes, stop and report back before building the rest.
+If neither version of the model passes, stop and report back before building the rest.
 
 ### Ground truth on aespa
 
