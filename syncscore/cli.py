@@ -159,6 +159,50 @@ def _audit_score(args: argparse.Namespace) -> int:
     return 0
 
 
+def _id_gate(args: argparse.Namespace) -> int:
+    """Measure how well each re-ID model names hand-labelled people (see syncscore/pose/gate.py)."""
+    import csv
+    import json
+    import time
+
+    import numpy as np
+
+    from .pose.fingerprint import Fingerprinter, fingerprint_video, load_fingerprints, save_fingerprints
+    from .pose.gate import margin_grid
+    from .pose.tracks import Detections, detections_key
+
+    config = load_config(args.config)
+    results = Path(args.results)
+    det = Detections.load(results / "detections.npz")
+    with open(args.labels, newline="", encoding="utf-8") as handle:
+        labels = {int(r["row"]): r["true_name"].strip() for r in csv.DictReader(handle)
+                  if r["true_name"].strip() and int(r["row"]) >= 0}
+    report_path = results / "gate.json"
+    previous = json.loads(report_path.read_text(encoding="utf-8")).get("models", {}) if report_path.exists() else {}
+    report = {"picked_frame": args.frame, "labelled_rows": len(labels), "models": {}}
+    for name in args.model:
+        path = results / f"gate_fingerprints_{name}.npz"
+        vectors = load_fingerprints(path, name, detections_key(det))
+        timing = {k: previous.get(name, {}).get(k) for k in ("ms_per_crop", "fingerprint_s")}
+        if vectors is None:
+            start = time.perf_counter()
+            vectors = fingerprint_video(args.video, det, Fingerprinter.load(name))
+            seconds = time.perf_counter() - start
+            save_fingerprints(path, vectors, name, detections_key(det))
+            crops = max(int(np.any(vectors != 0, axis=1).sum()), 1)
+            timing = {"ms_per_crop": round(1000 * seconds / crops, 2), "fingerprint_s": round(seconds, 1)}
+        grid = margin_grid(det, vectors, labels, args.frame, config)
+        report["models"][name] = {**timing, "margins": grid}
+        print(f"{name}: {timing['ms_per_crop']} ms per crop, {timing['fingerprint_s']} s for the clip")
+        for margin, r in grid.items():
+            print(f"  margin {margin}: members right {r['member_correct']:.1%}, unassigned {r['member_unassigned']:.1%}, "
+                  f"dancers named {r['dancer_as_member']:.1%}  per member "
+                  + ", ".join(f"{k} {v:.0%}" for k, v in r["per_member"].items()))
+    report_path.write_text(json.dumps(report, indent=1), encoding="utf-8")
+    print(f"written to {report_path}")
+    return 0
+
+
 def _shift_test(args: argparse.Namespace) -> int:
     """Plant known delays in real members' tracks and check they come back (no labels needed)."""
     import json
@@ -298,6 +342,14 @@ def main(argv: list[str] | None = None) -> int:
     audit.add_argument("--times", nargs="*", default=[], help="windows to sample densely, in seconds, e.g. 148-150")
     audit.add_argument("--step", type=float, default=0.2, help="seconds between frames inside a window")
     audit.set_defaults(run=_audit)
+
+    id_gate = commands.add_parser("id-gate", help="Measure how well re-ID fingerprints name hand-labelled people")
+    id_gate.add_argument("video")
+    id_gate.add_argument("--results", default="results")
+    id_gate.add_argument("--labels", required=True, help="a filled-in audit ids.csv")
+    id_gate.add_argument("--frame", type=int, required=True, help="the labelled frame that stands in for the picks")
+    id_gate.add_argument("--model", action="append", required=True, help="a key of syncscore.pose.fingerprint.MODELS")
+    id_gate.set_defaults(run=_id_gate)
 
     audit_score = commands.add_parser("audit-score", help="Score a filled-in audit CSV")
     audit_score.add_argument("csv")
