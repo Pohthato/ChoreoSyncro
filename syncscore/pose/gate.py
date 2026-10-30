@@ -3,7 +3,8 @@
 Hand-labelled audit rows (detection row -> true name, `dancer` for anyone who isn't a member)
 say who everyone really is. The labelled people of one frame are the picks: members seed their
 names, everyone else there seeds "not a member". Then every other labelled row is named the way
-`analyze --members` would name it (tracklets, fingerprints, learning rounds), and counted.
+`analyze --members` would name it (tracklets split where they change hands at a crossing,
+fingerprints, learning rounds), and counted.
 """
 from __future__ import annotations
 
@@ -13,6 +14,8 @@ from dataclasses import replace
 import numpy as np
 
 from ..config import Config
+from .camera import CameraPath
+from .motion import split_at_crossings
 from .recognize import learn
 from .tracks import Detections, build_tracklets
 
@@ -23,8 +26,10 @@ def _share(count: int, total: int) -> float:
     return count / total if total else math.nan
 
 
-def gate(det: Detections, vectors: np.ndarray, labels: dict[int, str], picked_frame: int, config: Config) -> dict:
-    tracklets = build_tracklets(det, max(3, int(0.3 * det.fps)))
+def gate(det: Detections, vectors: np.ndarray, labels: dict[int, str], picked_frame: int, config: Config,
+         camera: CameraPath) -> dict:
+    det = replace(det, vectors=vectors)
+    tracklets, _ = split_at_crossings(det, build_tracklets(det, max(3, int(0.3 * det.fps))), camera, config)
     pieces = [vectors[t.rows] for t in tracklets]
     frames = [t.frames for t in tracklets]
     piece_of = {int(row): p for p, t in enumerate(tracklets) for row in t.rows}
@@ -72,10 +77,10 @@ def gate(det: Detections, vectors: np.ndarray, labels: dict[int, str], picked_fr
 
 
 def margin_grid(det: Detections, vectors: np.ndarray, labels: dict[int, str], picked_frame: int, config: Config,
-                margins=(0.02, 0.04, 0.06, 0.08, 0.10)) -> dict[str, dict]:
+                camera: CameraPath, margins=(0.02, 0.04, 0.06, 0.08, 0.10)) -> dict[str, dict]:
     """gate() for each name margin, learning at twice the margin."""
     out = {}
     for margin in margins:
         identity = replace(config.identity, name_margin=margin, learn_margin=2 * margin)
-        out[f"{margin:.2f}"] = gate(det, vectors, labels, picked_frame, replace(config, identity=identity))
+        out[f"{margin:.2f}"] = gate(det, vectors, labels, picked_frame, replace(config, identity=identity), camera)
     return out

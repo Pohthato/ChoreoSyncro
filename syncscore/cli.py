@@ -215,6 +215,7 @@ def _id_gate(args: argparse.Namespace) -> int:
 
     from .pose.fingerprint import Fingerprinter, fingerprint_video, load_fingerprints, save_fingerprints
     from .pose.gate import margin_grid
+    from .pose.prepare import camera_path
     from .pose.tracks import Detections, detections_key
 
     config = load_config(args.config)
@@ -223,6 +224,7 @@ def _id_gate(args: argparse.Namespace) -> int:
     with open(args.labels, newline="", encoding="utf-8") as handle:
         labels = {int(r["row"]): r["true_name"].strip() for r in csv.DictReader(handle)
                   if r["true_name"].strip() and int(r["row"]) >= 0}
+    camera = camera_path(args.video, results, det)
     report_path = results / "gate.json"
     previous = json.loads(report_path.read_text(encoding="utf-8")).get("models", {}) if report_path.exists() else {}
     report = {"picked_frame": args.frame, "labelled_rows": len(labels), "models": {}}
@@ -237,7 +239,7 @@ def _id_gate(args: argparse.Namespace) -> int:
             save_fingerprints(path, vectors, name, detections_key(det))
             crops = max(int(np.any(vectors != 0, axis=1).sum()), 1)
             timing = {"ms_per_crop": round(1000 * seconds / crops, 2), "fingerprint_s": round(seconds, 1)}
-        grid = margin_grid(det, vectors, labels, args.frame, config)
+        grid = margin_grid(det, vectors, labels, args.frame, config, camera)
         report["models"][name] = {**timing, "margins": grid}
         print(f"{name}: {timing['ms_per_crop']} ms per crop, {timing['fingerprint_s']} s for the clip")
         for margin, r in grid.items():

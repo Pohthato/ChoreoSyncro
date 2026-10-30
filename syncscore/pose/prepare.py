@@ -23,15 +23,22 @@ from .tracks import Detections, detections_key
 from .video import VideoInfo, probe
 
 
+def camera_path(video, out: Path, det: Detections, progress: bool = True) -> CameraPath:
+    """The camera path from `out`/camera.npz when it matches `det`, else estimated and saved there."""
+    key = detections_key(det)
+    camera = CameraPath.load(Path(out) / "camera.npz", key)
+    if camera is None:
+        camera = estimate_camera(video, det, progress)
+        camera.save(Path(out) / "camera.npz", key)
+    return camera
+
+
 def prepare(video, out: Path, det: Detections, config: Config, progress: bool = True,
             info: VideoInfo | None = None) -> tuple[CameraPath, np.ndarray]:
     """(camera path, fingerprints), from `out` when they match `det`, else computed and saved there."""
     out = Path(out)
     key = detections_key(det)
-    camera = CameraPath.load(out / "camera.npz", key)
-    if camera is None:
-        camera = estimate_camera(video, det, progress)
-        camera.save(out / "camera.npz", key)
+    camera = camera_path(video, out, det, progress)
     model = config.identity.model
     vectors = load_fingerprints(out / "fingerprints.npz", model, key)
     if vectors is None:
