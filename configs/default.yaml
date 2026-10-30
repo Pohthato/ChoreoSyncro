@@ -84,9 +84,12 @@ render:
 
 identity:
   # Following members picked by name (analyze --members, syncscore/pose/identity.py).
+  # model and margins measured with `syncscore id-gate` on aespa (docs/walkthrough.md, Stage G):
+  # int8 gives everyone nearly the same fingerprint; fp32 at 0.06 is the smallest margin that
+  # names at most 2% of backup dancers.
   model: youtu                # re-ID model: youtu (107 MB) or youtu-int8 (27 MB), downloaded on first use
-  name_margin: 0.05           # a piece gets a member's name only if she beats the next best by this much
-  learn_margin: 0.10          # ...and is learned from only if she beats it by this much
+  name_margin: 0.06           # a piece gets a member's name only if she beats the next best by this much
+  learn_margin: 0.12          # ...and is learned from only if she beats it by this much
   rounds: 3                   # learning rounds
   split_distance: 0.35        # a tracklet whose fingerprints change this much across a crossing is split there
   position_gate: 3.0          # refuse a piece this far (Mahalanobis) from where the member's motion predicts
