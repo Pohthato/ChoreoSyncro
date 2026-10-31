@@ -88,6 +88,35 @@ def test_two_pieces_with_one_name_at_once_keep_the_stronger():
     assert _ids(det, following, 0) == {1}
 
 
+@pytest.mark.parametrize("dancer_id, a_id", [
+    (3, lambda f: 1 if f < 100 else 3 if f < 195 else 4),  # track 3 wanders onto the dancer as A goes on as track 4
+    (4, lambda f: 1 if f < 100 else 3 if f < 205 else 4),  # track 4 starts on the dancer and only then finds A
+])
+def test_pieces_sharing_a_few_frames_lose_only_those_frames(dancer_id, a_id):
+    rng = np.random.default_rng(7)
+    a = unit(rng)
+    people = [Person(a, lambda f: 600, a_id),
+              Person(near(a, 0.9, rng), lambda f: 1200, lambda f: dancer_id if 195 <= f < 205 else None),
+              Person(unit(rng), lambda f: 200, lambda f: 2)]
+    det, truth, following = _follow(people, [0, 2])
+    rows = _rows(following, 0)
+    assert set(truth[rows].tolist()) == {0}
+    assert set(det.frame[rows].tolist()) == set(range(det.n_frames))
+
+
+def test_a_piece_that_beat_one_she_has_is_not_checked_against_where_that_one_was_heading():
+    rng = np.random.default_rng(8)
+    a = unit(rng)
+    a_track = lambda f: 1 if f < 100 else 3 if f < 190 else (None if f < 200 else 4)
+    # While A is hidden a dancer leaves her spot at speed, carrying her name, and overlaps A's return.
+    people = [Person(a, lambda f: 600, a_track),
+              Person(near(a, 0.9, rng), lambda f: 600 + 30 * (f - 190), lambda f: 5 if 190 <= f < 210 else None),
+              Person(unit(rng), lambda f: 200, lambda f: 2)]
+    det, truth, following = _follow(people, [0, 2])
+    assert set(range(200, det.n_frames)) <= set(det.frame[_rows(following, 0)].tolist())
+    assert following.report["position_rejections"] == []
+
+
 def test_a_picked_person_with_no_tracker_id_still_seeds_her_name():  # Review Focus 3
     rng = np.random.default_rng(5)
     people = [Person(unit(rng), lambda f: 600, lambda f: -1 if f == PICKED else 4),

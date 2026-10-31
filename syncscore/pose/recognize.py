@@ -75,17 +75,28 @@ def overlap(a_frames: np.ndarray, b_frames: np.ndarray) -> int:
     return len(np.intersect1d(a_frames, b_frames))
 
 
+def _scores_without(rows: np.ndarray, matrices: list[np.ndarray], owners: list[np.ndarray], skip: list[int]) -> np.ndarray:
+    """Each class's score for `rows`, leaving out its examples from the pieces in `skip`."""
+    rows = _usable(rows)
+    return np.array([_top_k_mean(rows @ matrix[~np.isin(owner, skip)].T) for matrix, owner in zip(matrices, owners)])
+
+
 @dataclass
 class Recognizer:
     examples: list[np.ndarray]  # per member
     others: np.ndarray          # not a member
     margin: float               # name_margin
+    owners: list[np.ndarray]    # the piece each example came from, per class (members, then not a member)
 
     def scores(self, rows: np.ndarray) -> np.ndarray:
         return np.array([class_score(rows, e) for e in [*self.examples, self.others]])
 
     def name(self, rows: np.ndarray, exclude=()) -> Naming:
         return _naming(self.scores(rows), self.margin, exclude)
+
+    def likeness(self, member: int, rows: np.ndarray, skip: list[int]) -> float:
+        """Her class score for `rows`, without her examples from the `skip` pieces."""
+        return float(_scores_without(rows, [self.examples[member]], [self.owners[member]], skip)[0])
 
 
 class _Classes:
@@ -103,12 +114,7 @@ class _Classes:
             self.owners.append(owner[keep])
 
     def scores(self, rows: np.ndarray, piece: int) -> np.ndarray:
-        rows = _usable(rows)
-        out = []
-        for matrix, owner in zip(self.matrices, self.owners):
-            mine = owner != piece
-            out.append(_top_k_mean(rows @ matrix[mine].T))
-        return np.array(out)
+        return _scores_without(rows, self.matrices, self.owners, [piece])
 
 
 def learn(pieces: list[np.ndarray], frames: list[np.ndarray], seeds: list[int], not_members: list[int],
@@ -151,5 +157,6 @@ def learn(pieces: list[np.ndarray], frames: list[np.ndarray], seeds: list[int], 
     names = name_all(final, config.name_margin)
     namings = [Naming(fixed[p], math.inf, np.full(n_members + 1, math.nan)) if p in fixed else names[p]
                for p in range(len(pieces))]
-    recognizer = Recognizer(examples=final.matrices[:-1], others=final.matrices[-1], margin=config.name_margin)
+    recognizer = Recognizer(examples=final.matrices[:-1], others=final.matrices[-1], margin=config.name_margin,
+                            owners=final.owners)
     return recognizer, namings

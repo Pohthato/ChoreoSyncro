@@ -6,7 +6,7 @@ import pytest
 
 from scenes import near, unit
 from syncscore.config import IdentityConfig
-from syncscore.pose.recognize import class_score, learn, overlap
+from syncscore.pose.recognize import Recognizer, class_score, learn, overlap
 
 CONFIG = IdentityConfig()
 
@@ -109,6 +109,17 @@ def test_excluding_a_member_rescores_without_it():
     rows = s.rows(s.a)
     assert recognizer.name(rows).member == 0
     assert recognizer.name(rows, exclude={0}).member is None
+
+
+def test_a_pieces_own_rows_do_not_count_toward_how_much_it_looks_like_her():
+    rng = np.random.default_rng(0)
+    a = unit(rng)
+    own = np.stack([near(a, 0.7, rng) for _ in range(10)], dtype=np.float32)
+    rest = np.stack([near(a, 0.99, rng) for _ in range(10)], dtype=np.float32)
+    recognizer = Recognizer(examples=[np.vstack([rest, own])], others=np.zeros((0, 32), np.float32), margin=0.06,
+                            owners=[np.array([1] * 10 + [2] * 10), np.zeros(0, int)])
+    assert recognizer.likeness(0, own, skip=[2]) == pytest.approx(class_score(own, rest))
+    assert recognizer.likeness(0, own, skip=[]) > recognizer.likeness(0, own, skip=[2]) + 0.02
 
 
 def test_rows_without_a_fingerprint_are_ignored():

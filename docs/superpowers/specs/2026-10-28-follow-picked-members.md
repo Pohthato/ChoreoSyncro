@@ -156,8 +156,9 @@ than its own. Only crossings are checked, so a dancer turning around isn't split
 
 - Each named member's hip centre in stage coordinates is followed by a constant-velocity Kalman
   filter (position and velocity, so heading is part of the state).
-- **One person per name:** if two pieces carry the same name at overlapping frames, the one with
-  the larger margin keeps it, and the other is re-scored without that member, which usually leaves
+- **One person per name:** if two pieces carry the same name at overlapping frames, the piece
+  whose rows in those frames look more like the member keeps them and the other gives up only
+  those frames. A piece left with nothing is re-scored without that member, which usually leaves
   it unassigned.
 - **Hidden members keep their name.** While a member is unseen, the filter predicts where she is
   going and its uncertainty grows. A piece that starts after the gap takes her name only if its

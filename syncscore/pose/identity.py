@@ -5,8 +5,10 @@
    and the other people in the picked frame are examples of "not a member".
 3. For each member, walk outward from her picked piece, forward in time and then backward. A
    piece named her is taken unless:
-   - it overlaps a piece she already has: the one named more surely keeps her name, and the
-     other is named again without her, once;
+   - it shares frames with a piece she already has: the piece whose rows there look more like
+     her keeps those frames and the other gives them up, since a track that changes hands
+     unnoticed shares a moment with the next one and is still right the rest of the time. A
+     piece left with nothing is named again without her, once;
    - she was unseen only briefly (and the camera did not cut) and the piece is far from where
      her motion says she is heading: a lookalike on the other side of the stage.
 
@@ -24,7 +26,7 @@ import numpy as np
 from ..config import Config
 from .camera import CameraPath
 from .motion import Track, positions, split_at_crossings
-from .recognize import MAX_SHARED, Naming, Recognizer, learn, overlap
+from .recognize import MAX_SHARED, Naming, Recognizer, learn
 from .tracks import Detections, Slot, Tracklet
 
 HEADING_S = 2.0  # seconds of a piece the motion model follows before predicting across a gap
@@ -107,24 +109,41 @@ def follow_members(det: Detections, tracklets: list[Tracklet], camera: CameraPat
             return True
         return False
 
-    def clashes(m: int, p: int) -> list[int]:
-        return [q for q in accepted[m] if overlap(pieces[q].frames, pieces[p].frames) > MAX_SHARED]
+    def stronger(m: int, p: int, q: int, shared: np.ndarray) -> bool:
+        """Do p's rows in the `shared` frames look more like member m than q's? Neither votes for itself."""
+        def likeness(piece: int) -> float:
+            rows = pieces[piece].rows[np.isin(pieces[piece].frames, shared)]
+            return recognizer.likeness(m, det.vectors[rows], skip=[p, q])
+        return likeness(p) > likeness(q)
+
+    def cut(p: int, shared: np.ndarray) -> bool:
+        """Take the `shared` frames out of piece p; False, leaving it as it was, if that would empty it."""
+        P = pieces[p]
+        rows = P.rows[~np.isin(P.frames, shared)]
+        if len(rows) == 0:
+            return False
+        pieces[p] = Tracklet(P.track_id, rows, det.frame[rows], det.hist[rows].mean(axis=0))
+        return True
 
     dropped: dict[int, set[int]] = {}  # piece -> members it lost
 
     def offer(m: int, p: int, margin: float, rescore: bool) -> None:
-        clash = clashes(m, p)
-        if clash:
-            if margin > max(accepted[m][q] for q in clash):
-                for q in clash:
-                    del accepted[m][q]
-                    if not rescore:
-                        dropped.setdefault(q, set()).add(m)
-                accepted[m][p] = margin
-            elif not rescore:
-                dropped.setdefault(p, set()).add(m)
-            return
-        if not refused(m, p):
+        beat_one = False  # then the frames were judged by look, and the piece it beat can't vouch for a heading
+        for q in list(accepted[m]):
+            shared = np.intersect1d(pieces[p].frames, pieces[q].frames)
+            if len(shared) <= MAX_SHARED:
+                continue
+            won = stronger(m, p, q, shared)
+            beat_one |= won
+            loser = q if won else p
+            if cut(loser, shared):
+                continue
+            if not rescore:
+                dropped.setdefault(loser, set()).add(m)
+            if loser == p:
+                return
+            del accepted[m][q]
+        if beat_one or not refused(m, p):
             accepted[m][p] = margin
 
     fixed = set(seeds) | set(not_members)
