@@ -7,6 +7,7 @@ people per frame); naming them, or measuring without names, runs ANALYZE and VIE
 import http.client
 import io
 import json
+import socket
 import sys
 import textwrap
 import threading
@@ -340,6 +341,24 @@ def test_bad_picks_are_refused_with_the_reason_and_the_job_keeps_waiting(server)
     assert response.status == 413
     assert server.uploads.get(job["id"])["status"] == "picking"
     assert not (server.uploads.folder(job["id"]) / "picks.json").exists()
+
+
+def test_picks_too_large_are_read_through_so_the_answer_is_not_lost(server):
+    """Closing on an unread body resets the connection, and the reset can destroy the answer."""
+    _, job = upload(server)
+    wait_for(server, job["id"], picking)
+    port = server.server_address[1]
+    body = b"x" * (65 << 10)
+    head = (f"POST /api/uploads/{job['id']}/picks HTTP/1.1\r\nHost: 127.0.0.1:{port}\r\n"
+            f"Content-Type: application/json\r\nContent-Length: {len(body)}\r\n\r\n")
+    with socket.create_connection(("127.0.0.1", port), timeout=10) as client:
+        client.sendall(head.encode() + body[:32 << 10])
+        time.sleep(0.2)
+        client.sendall(body[32 << 10:])
+        answer = b""
+        while chunk := client.recv(4096):
+            answer += chunk
+    assert b" 413 " in answer.split(b"\r\n")[0] and b"The picks are too large." in answer
 
 
 def test_pick_again_returns_to_picking_without_measuring_again(server):

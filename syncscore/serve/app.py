@@ -176,7 +176,6 @@ class Handler(BaseHTTPRequestHandler):
             if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
                 raise HttpError(415, "Send the picks as JSON.")
             if self._body_left > MAX_PICKS:
-                self._body_left = 0  # not worth reading through: just close the connection
                 raise HttpError(413, "The picks are too large.")
             body, self._body_left = self.rfile.read(self._body_left), 0
             try:
