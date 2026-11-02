@@ -117,6 +117,19 @@ def test_a_piece_that_beat_one_she_has_is_not_checked_against_where_that_one_was
     assert following.report["position_rejections"] == []
 
 
+def test_a_piece_named_by_look_is_not_refused_from_one_it_shares_frames_with():
+    rng = np.random.default_rng(14)
+    a = unit(rng)
+    # The tracker hands her over with two frames where both IDs are on her, the new box a body-width off.
+    # One frame apart, that offset is far outside where she was heading, but it says nothing about a lookalike.
+    people = [Person(a, lambda f: 600, lambda f: 1 if f <= 150 else None),
+              Person(near(a, 0.95, rng), lambda f: 680, lambda f: 2 if f >= 149 else None),
+              Person(unit(rng), lambda f: 1500, lambda f: 5)]
+    det, truth, following = _follow(people, [0, 2])
+    assert 2 in _ids(det, following, 0)
+    assert following.report["position_rejections"] == []
+
+
 def test_a_picked_person_with_no_tracker_id_still_seeds_her_name():  # Review Focus 3
     rng = np.random.default_rng(5)
     people = [Person(unit(rng), lambda f: 600, lambda f: -1 if f == PICKED else 4),

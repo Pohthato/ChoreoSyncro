@@ -84,13 +84,14 @@ def follow_members(det: Detections, tracklets: list[Tracklet], camera: CameraPat
     accepted: list[dict[int, float]] = [{s: math.inf} for s in seeds]  # member -> {piece: margin}
     rejections: list[dict] = []
 
-    def gate(m: int, p: int, forward: bool) -> float | None:
+    def gate(m: int, p: int, forward: bool, through: bool = False) -> float | None:
         """How far piece p is from where member m was heading, seen from her nearest piece before it
-        (or after it, not `forward`), in Mahalanobis distance; None when not checked. A few frames
-        the two share don't move the anchor: the check starts where p goes past it."""
+        (or after it, not `forward`), in Mahalanobis distance; None when not checked. With `through`,
+        that piece may run into p and the check starts where p goes past it: one frame on, passing
+        means the two line up, but failing can be the tracker's boxes, so only a pass counts."""
         P = pieces[p]
         if forward:
-            before = [q for q in accepted[m] if pieces[q].start < P.start and pieces[q].end < P.end]
+            before = [q for q in accepted[m] if pieces[q].start < P.start and pieces[q].end < (P.end if through else P.start)]
             if not before:
                 return None
             anchor = pieces[max(before, key=lambda q: pieces[q].end)]
@@ -100,7 +101,7 @@ def follow_members(det: Detections, tracklets: list[Tracklet], camera: CameraPat
             rows = anchor.rows[anchor.frames > anchor.end - HEADING_S * fps]
             point, frames = stage[first], det.frame[rows]
         else:
-            after = [q for q in accepted[m] if pieces[q].start > P.start and pieces[q].end > P.end]
+            after = [q for q in accepted[m] if pieces[q].start > (P.start if through else P.end) and pieces[q].end > P.end]
             if not after:
                 return None
             anchor = pieces[min(after, key=lambda q: pieces[q].start)]
@@ -191,7 +192,8 @@ def follow_members(det: Detections, tracklets: list[Tracklet], camera: CameraPat
         return float(scores[m] - max(rivals)) if rivals else math.inf
 
     def continues(m: int, p: int) -> bool:
-        return any(d is not None and d <= ident.position_gate for d in (gate(m, p, True), gate(m, p, False)))
+        return any(d is not None and d <= ident.position_gate
+                   for d in (gate(m, p, True, through=True), gate(m, p, False, through=True)))
 
     under_margin: list[tuple[int, int, float]] = []  # piece, member, lead
     waiting = sorted((p for p, n in enumerate(namings) if n.member is None and p not in fixed and p not in held
