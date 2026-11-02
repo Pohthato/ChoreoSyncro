@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from scenes import Person, near, scene, unit
+from scenes import Person, at, near, scene, unit
 from syncscore.config import load_config
 from syncscore.pose.camera import still_camera
 from syncscore.pose.identity import allow_for, follow_members
@@ -11,9 +11,9 @@ CONFIG = load_config()
 PICKED = 30
 
 
-def _follow(people, members):
+def _follow(people, members, noise=0.05):
     """Run follow_members with `members` (indices into people) picked at frame 30."""
-    det, truth = scene(people)
+    det, truth = scene(people, noise=noise)
     picked = [int(np.flatnonzero((det.frame == PICKED) & (truth == m))[0]) for m in members]
     following = follow_members(det, build_tracklets(det, 9), still_camera(det.n_frames), picked, CONFIG)
     return det, truth, following
@@ -153,3 +153,118 @@ def test_slots_come_in_pick_order():
     det, truth, following = _follow(people, [0, 1])
     tracks = assemble(det, following.slots, keep_order=True)
     assert tracks.box[0, 100, 0] > tracks.box[1, 100, 0]  # the first pick stands on the right
+
+
+SHARP = 0.01  # noise low enough that a score is the cosine it was built from
+
+
+def _piece_she_barely_leads(rng, a, to_dancer, dancer, x=lambda f: 600, frames=(150, 210), track=2, **rivals):
+    """A person seen only in `frames`, about (0.5 - to_dancer) closer to A than to the dancer."""
+    look = at(rng, (a, 0.5), (dancer, to_dancer), *rivals.values())
+    return Person(look, x, lambda f: track if frames[0] <= f <= frames[1] else None)
+
+
+def _hidden_a(lead, x=lambda f: 600, end=210):
+    """A is plain up to frame 150 and after `end`; in between she is a piece leading the dancer's look by `lead`."""
+    rng = np.random.default_rng(9)
+    a, dancer = unit(rng), unit(rng)
+    people = [Person(a, lambda f: 600, lambda f: 1 if f < 150 else (3 if f > end else None)),
+              _piece_she_barely_leads(rng, a, 0.5 - lead, dancer, x, (150, end)),
+              Person(dancer, lambda f: 1500, lambda f: 5)]
+    det, truth, following = _follow(people, [0], noise=SHARP)
+    margin = following.recognizer.name(det.vectors[truth == 1]).margin
+    assert margin < CONFIG.identity.name_margin
+    return det, truth, following, margin
+
+
+def test_a_piece_she_barely_leads_is_hers_when_it_continues_her_motion():
+    det, truth, following, margin = _hidden_a(0.05)
+    assert margin >= CONFIG.identity.name_margin / 2
+    assert 2 in _ids(det, following, 0)
+
+
+def test_the_report_lists_the_pieces_taken_under_the_margin():
+    det, truth, following, margin = _hidden_a(0.05)
+    taken = following.report["taken_under_margin"]
+    assert len(taken) == 1
+    assert taken[0]["start_s"] == 5.0 and taken[0]["end_s"] == 7.0 and taken[0]["member"] == 0
+    assert taken[0]["lead"] == pytest.approx(margin, abs=0.01)
+
+
+def test_a_piece_she_leads_by_under_half_the_margin_stays_unnamed():
+    det, truth, following, margin = _hidden_a(0.01)
+    assert 0 < margin < CONFIG.identity.name_margin / 2
+    assert 2 not in _ids(det, following, 0)
+
+
+def test_a_piece_too_long_for_motion_to_vouch_for_stays_unnamed():
+    too_long = 150 + int(CONFIG.identity.free_after_s * 30) + 10
+    det, truth, following, margin = _hidden_a(0.05, end=too_long)
+    assert margin >= CONFIG.identity.name_margin / 2
+    assert 2 not in _ids(det, following, 0)
+
+
+def test_a_piece_she_leads_far_from_where_she_was_heading_stays_unnamed():
+    det, truth, following, margin = _hidden_a(0.05, x=lambda f: 1300)
+    assert margin >= CONFIG.identity.name_margin / 2
+    assert 2 not in _ids(det, following, 0)
+    assert following.report["position_rejections"] == []  # it was never named her
+
+
+def _a_or_b(b_track):
+    """A piece close to A, a little less close to B, and further from the dancer. B's tracker ID is `b_track`."""
+    rng = np.random.default_rng(10)
+    a, b, dancer = unit(rng), unit(rng), unit(rng)
+    people = [Person(a, lambda f: 600, lambda f: 1 if f < 150 else (3 if f > 210 else None)),
+              Person(b, lambda f: 1000, b_track),
+              _piece_she_barely_leads(rng, a, 0.45, dancer, b=(b, 0.48)),
+              Person(dancer, lambda f: 1500, lambda f: 5)]
+    det, truth, following = _follow(people, [0, 1], noise=SHARP)
+    naming = following.recognizer.name(det.vectors[truth == 2])
+    assert 0 < naming.margin < CONFIG.identity.name_margin / 2 and np.nanargmax(naming.scores[:-1]) == 0
+    return det, following
+
+
+def test_a_member_seen_elsewhere_during_a_piece_is_no_rival_for_it():
+    det, following = _a_or_b(lambda f: 4)
+    assert 2 in _ids(det, following, 0)
+
+
+def test_a_member_out_of_sight_during_a_piece_is_still_a_rival_for_it():
+    det, following = _a_or_b(lambda f: None if 140 <= f <= 220 else 4)
+    assert 2 not in _ids(det, following, 0)
+    assert 2 not in _ids(det, following, 1)
+
+
+def test_a_piece_can_continue_her_motion_from_another_taken_the_same_way():
+    rng = np.random.default_rng(11)
+    a, dancer = unit(rng), unit(rng)
+    # The second piece has the better lead, so it is tried first, but only the first is in reach of what she has.
+    people = [Person(a, lambda f: 600, lambda f: 1 if f < 150 else (3 if f >= 370 else None)),
+              _piece_she_barely_leads(rng, a, 0.46, dancer, frames=(150, 170), track=2),
+              _piece_she_barely_leads(rng, a, 0.45, dancer, frames=(250, 275), track=4),
+              Person(dancer, lambda f: 1500, lambda f: 5)]
+    det, truth, following = _follow(people, [0], noise=SHARP)
+    assert {2, 4} <= _ids(det, following, 0)
+
+
+def test_a_piece_sharing_a_frame_with_her_last_piece_still_continues_its_motion():
+    rng = np.random.default_rng(12)
+    a, dancer = unit(rng), unit(rng)
+    people = [Person(a, lambda f: 600, lambda f: 1 if f <= 150 else (3 if f > 310 else None)),
+              _piece_she_barely_leads(rng, a, 0.45, dancer),
+              Person(dancer, lambda f: 1500, lambda f: 5)]
+    det, truth, following = _follow(people, [0], noise=SHARP)
+    assert 2 in _ids(det, following, 0)
+
+
+def test_a_piece_that_fits_only_the_side_she_comes_back_on_is_hers():
+    rng = np.random.default_rng(13)
+    a, dancer = unit(rng), unit(rng)
+    # She reappears out of reach of what she had, so that piece is hers by look alone and it can vouch for this one.
+    people = [Person(a, lambda f: 600 if f < 150 else 1200, lambda f: 1 if f < 150 else (3 if f > 240 else None)),
+              _piece_she_barely_leads(rng, a, 0.45, dancer, x=lambda f: 1200, frames=(150, 240)),
+              Person(dancer, lambda f: 1500, lambda f: 5)]
+    det, truth, following = _follow(people, [0], noise=SHARP)
+    assert {2, 3} <= _ids(det, following, 0)
+    assert following.report["position_rejections"] == []

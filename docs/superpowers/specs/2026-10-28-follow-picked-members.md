@@ -168,6 +168,13 @@ than its own. Only crossings are checked, so a dancer turning around isn't split
 - After `identity.free_after_s` (3 s) unseen, or across a camera segment boundary, the position
   test is dropped and the fingerprint alone decides. This covers members leaving the frame during
   a solo and coming back when the camera widens.
+- **A piece just under the margin can still be hers.** The margin has to hold for a piece with
+  nothing else to go on. After the walk, a piece left unassigned takes the name of the member who
+  leads it if she leads by at least half the margin (the close-call band) over not-a-member and
+  over the members not seen elsewhere during it, the piece is no longer than
+  `identity.free_after_s`, and it picks up where her motion was heading, under
+  `identity.position_gate`, from a piece she has on at least one side. A piece taken this way can
+  vouch for the next one. Anything else stays unassigned: a doubtful moment leaves her unseen.
 
 ### Gap-filling
 
@@ -179,8 +186,9 @@ margin and its position passes the motion model. Without picks, they behave as n
 
 - Members keep the picked order and names in the viewer, the report cards and `summary.json`.
 - `tracking_report.json` gains an `identity` block: the picked frame, each member's tracked share
-  of the clip, the splits made, and the close calls (pieces that passed or failed by less than half
-  the margin, with times). The colour-based `suspected_swaps` stays for runs without picks.
+  of the clip, the splits made, the close calls (pieces that passed or failed by less than half
+  the margin, with times), and the pieces taken under the margin. The colour-based
+  `suspected_swaps` stays for runs without picks.
 
 ### Config
 

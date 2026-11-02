@@ -113,6 +113,7 @@ def _analyze(args: argparse.Namespace) -> int:
             "splits": found["splits"],
             "close_calls": [{**c, "member": None if c["member"] is None else names[c["member"]]} for c in found["close_calls"]],
             "position_rejections": [{**r, "member": names[r["member"]]} for r in found["position_rejections"]],
+            "taken_under_margin": [{**t, "member": names[t["member"]]} for t in found["taken_under_margin"]],
         }
     report |= {
         "variable_frame_rate_resampled": info.variable,

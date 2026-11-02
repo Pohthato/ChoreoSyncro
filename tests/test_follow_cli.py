@@ -100,7 +100,7 @@ def test_members_are_followed_by_name_in_pick_order(scene_dir):
     identity = report["identity"]
     assert identity["picked_frame"] == PICKED and identity["model"]
     assert set(identity["tracked_share"]) == {"A", "B", "C", "D"}
-    assert {"splits", "close_calls", "position_rejections"} <= set(identity)
+    assert {"splits", "close_calls", "position_rejections", "taken_under_margin"} <= set(identity)
 
 
 def test_a_bad_picks_file_stops_with_the_reason(scene_dir, capsys):

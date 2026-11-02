@@ -22,6 +22,16 @@ def near(v: np.ndarray, cos: float, rng) -> np.ndarray:
     return cos * v + np.sqrt(1 - cos ** 2) * w
 
 
+def at(rng, *pairs: tuple[np.ndarray, float]) -> np.ndarray:
+    """A unit vector at the given cosine to each given vector, in a random direction otherwise."""
+    vectors = np.stack([v for v, _ in pairs])
+    inverse = np.linalg.pinv(vectors)
+    v = inverse @ np.array([c for _, c in pairs])
+    w = rng.normal(size=v.shape)
+    w -= inverse @ (vectors @ w)
+    return v + np.sqrt(1 - v @ v) * w / np.linalg.norm(w)
+
+
 @dataclass
 class Person:
     look: np.ndarray                     # her fingerprint centre
