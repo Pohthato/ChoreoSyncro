@@ -51,12 +51,15 @@ def read_frame(video, frame: int, times_ms: np.ndarray) -> np.ndarray | None:
 
     Seeking lands on a keyframe near the asked time, often before it and sometimes past it. So it
     seeks a little early and decodes on until the timestamp is the frame's own; if it still landed
-    past the frame it seeks from further back, and last of all reads from the start."""
+    past the frame it seeks from further back, and last of all reads from the start. A timestamp is
+    the frame's own when it is nearer to it than to either neighbour: on variable-rate video a
+    burst of frames sits closer together than the usual spacing."""
     times_ms = np.asarray(times_ms, dtype=float)
     if not 0 <= frame < len(times_ms):
         return None
     target = times_ms[frame]
-    half = 0.5 * float(np.median(np.diff(times_ms))) if len(times_ms) > 1 else 1.0
+    after = (times_ms[frame - 1] + target) / 2 if frame > 0 else -np.inf   # its own from here...
+    before = (target + times_ms[frame + 1]) / 2 if frame + 1 < len(times_ms) else np.inf  # ...to here
     for preroll in (2000.0, 8000.0, None):
         cap = cv2.VideoCapture(str(video))
         try:
@@ -67,9 +70,9 @@ def read_frame(video, frame: int, times_ms: np.ndarray) -> np.ndarray | None:
             if not cap.grab():
                 continue
             t = cap.get(cv2.CAP_PROP_POS_MSEC)
-            if t > target + half:  # landed past it: back off further
+            if t >= before:  # landed past it: back off further
                 continue
-            while t < target - half:
+            while t < after:
                 if not cap.grab():
                     return None
                 t = cap.get(cv2.CAP_PROP_POS_MSEC)
