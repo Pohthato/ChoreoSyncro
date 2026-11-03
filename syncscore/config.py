@@ -107,8 +107,8 @@ class HitsConfig:
 @dataclass
 class IdentityConfig:
     model: str = "youtu"         # re-ID model, a key of syncscore.pose.fingerprint.MODELS
-    name_margin: float = 0.05    # a piece is named only when its member beats the next best class by this much
-    learn_margin: float = 0.10   # ...and learned from (its rows become examples) only by this much
+    name_margin: float = 0.06    # a piece is named only when its member beats the next best class by this much
+    learn_margin: float = 0.12   # ...and learned from (its rows become examples) only by this much
     rounds: int = 3              # learning rounds
     split_distance: float = 0.35 # cosine distance between a tracklet's fingerprints before and after a crossing that splits it
     position_gate: float = 3.0   # a piece further than this (Mahalanobis) from where the member's motion predicts is refused

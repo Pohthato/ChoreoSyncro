@@ -1,3 +1,5 @@
+from dataclasses import replace
+
 import pytest
 
 from syncscore.config import load_config
@@ -33,3 +35,12 @@ def test_identity_settings_load_and_reject_unknown_keys(tmp_path):
     bad.write_text("identity:\n  margin: 0.1\n")
     with pytest.raises(ValueError, match="IdentityConfig"):
         load_config(bad)
+
+
+def test_a_config_file_gets_the_packaged_defaults_for_what_it_leaves_out(tmp_path):
+    # A clip's config lists only what differs for it; everything else must be what default.yaml says,
+    # including values measured since (the identity margins).
+    path = tmp_path / "clip.yaml"
+    path.write_text("tracking:\n  members: 4\n", encoding="utf-8")
+    packaged = load_config()
+    assert load_config(path) == replace(packaged, tracking=replace(packaged.tracking, members=4))
