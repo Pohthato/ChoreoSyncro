@@ -624,3 +624,134 @@ late in the song isn't hidden by the rest; the BTS clip's weakest 20 s has 62%).
 |---|---|
 | ![The beat lane](media/viewer_beat.png) | ![M2 apart, no ghost](media/viewer_apart.png) |
 | *The lane at 2:36 (skeleton only). Dots are neutral: this clip's landings don't lock.* | *M2 crouching at 3:00 while the group stands: no ghost, no group timing.* |
+
+## Stage G: following the picked members (`pose/camera.py`, `pose/fingerprint.py`, `pose/recognize.py`, `pose/motion.py`, `pose/identity.py`)
+
+**Why:** in the aespa "Whiplash" practice, four members dance among backup dancers, several of
+them in the same black. Tracker IDs change hands at crossings, and the stitching from Stage C
+tells people apart by clothing colour, so a member's name could land on a dancer in black without
+anything in the report showing it. The fix asks the user once: name the members in one frame,
+then follow each one by how they look and where they are heading.
+
+**How it works.** `analyze --pose-only` finds the people, follows the camera's pan and zoom (the
+aespa camera never cuts: one segment) and gives every detection a re-ID fingerprint. The user names
+the members in one frame (the upload page's picker, or `picks.json`). Then:
+1. Tracks are split where they change hands at a crossing: the fingerprint changes across it by
+   more than `split_distance`.
+2. Every piece is named by fingerprint. The named people are the first examples, everyone else in
+   that frame is an example of "not a member", and pieces named clearly (`learn_margin`) become
+   examples too, for three rounds. A piece gets a name only if that member beats the next best by
+   `name_margin`.
+3. From the picked frame, each member is followed outward in time. Where two pieces named for the
+   same member share frames, the piece whose rows there look more like that member keeps those
+   frames. After a short gap, a piece far from where the member's motion was heading is refused: a
+   lookalike on the other side of the stage.
+4. A piece just short of the margin is still taken when the member leads it by half the margin, it
+   lasts at most `free_after_s` (3 s), and it continues the member's motion from a piece they have
+   on one side. This step was added for the row (below).
+
+**The gate first.** Before the following was built, the fingerprints were tested on about 30
+hand-labelled frames (`syncscore id-gate`: 106 member rows, 101 dancer rows).
+- The int8 model (27 MB) gives everyone nearly the same fingerprint (cosine 0.941 to the same
+  person, 0.940 to someone else): 17.9% named right and 82.1% unnamed, at every margin.
+- The fp32 model first scored no better, because batched OpenCV inference mixed the crops of one
+  batch (cosine to the one-at-a-time result as low as -0.16). Crops now go through one at a time,
+  and a test with a network that mixes its batch pins it.
+- The gate named raw tracklets, but the product names split pieces, and 12 labelled tracklets held
+  two people. Named the way the product does it:
+
+| name_margin | 0.02 | 0.04 | 0.06 | 0.08 |
+|---|---|---|---|---|
+| member rows named right | 92.5% | 91.5% | 90.6% | 86.8% |
+| dancer rows given a member's name | 8.9% | 6.9% | 2.0% | 1.0% |
+
+0.06 (learning at 0.12) is the smallest margin that names at most 2% of the dancers. Per member:
+A 85%, B 87%, C 96%, D 96%. The spec asks for 95% right, which no model reached at this stage. The
+other 9% has no single cause (two hand-overs not split, short pieces under the margin, one
+re-entry), so the decision moved to the whole flow, measured below. Fingerprinting takes about
+65 ms per person per frame on a CPU and runs once per video.
+
+**Measured by hand, blind.** `syncscore audit` samples frames (`--times` adds every 0.2 s in a
+window). True names were labelled on full frames with every box numbered at random, by outfit
+only (A: olive tank, black beanie; B: grey top, black cap; C: light-blue shirt, yellow boots; D:
+black crop tee, black cap), without seeing the name the run gave. Crops alone could not tell D
+from the dancers in black. A box over two people stays blank and isn't scored.
+
+**Found by the first audit: overlaps cost whole pieces.** When two pieces named for the same
+member overlapped, the weaker one was dropped entirely, which threw away 4,344 rows on aespa. A
+tracker hand-over shares a moment with the next track and is right the rest of the time. Now only
+the shared frames are contested, and a piece left with nothing is named again without that
+member, once. On the first audit's 145 frames, the fix took 402 sightings scored at 97.0% right,
+2.5% dancers and A tracked 44% of the time to 475 at 98.7%, 1.1% dancers and A at 80%. Those
+labels informed the fix, so a fresh sample of 81 frames never seen before checked it: 248 scored,
+98.4% right, 1.2% dancers, longest wrong name 0.2 s.
+
+**The row.** From 146 to 157 s the four stand in single file facing the camera. Only C, in front,
+can be seen; the others show only their arms, fanned out beside and behind C. Frame by frame:
+- From 149.2 to 151 s every track behind C ends, and new ones start only after. Nothing carries a
+  name through, and the fanned arms at 150.4-150.6 s get no skeleton of their own (the pose model
+  gives them to a sliver of the person behind). That moment stays "not seen".
+- The part that could be fixed was around it. D was unseen for all of 146.4-157 s and A for most
+  of it, though their pieces existed: those pieces led their member by less than the margin,
+  because a half-hidden person's fingerprint is partly the person in front.
+- First idea, tried in scratch and dropped: take any lead above 0 that fits the motion on either
+  side. It named a dancer as D for 1.8 s.
+- Built: step 4 above. Half the margin is the band the report already calls "close", 3 s is
+  already where motion stops limiting where a member can come back, and the motion check is the
+  existing one. No new setting.
+
+**Found along the way:**
+- The row rule's first version let the position check read through frames two pieces share, and
+  that reached the main walk too. Three long pieces, named right, were refused one frame after a
+  piece they overlapped (A at 67.9 s, C at 117.3 s, A at 173.4 s), and A's tracked share fell from
+  81% to 75%. One frame on, a pass means the two pieces line up, but a failure can be the
+  tracker's boxes. The main walk again checks from the member's piece before; only the row rule
+  reads through shared frames.
+- **The aespa runs used the wrong margins until late in this stage.** `configs/aespa_whiplash.yaml`
+  lists only what differs for this clip, and the code's defaults for the two margins were still
+  0.05 / 0.10 while `configs/default.yaml` had the measured 0.06 / 0.12. A piece taken with a lead
+  of 0.029 under a bar of 0.03 gave it away. The code defaults now match the file, a test checks
+  that a config file gets the packaged values for anything it leaves out, and the result below is
+  from a re-run at 0.06 / 0.12. (Both sides of the overlap fix above were measured at 0.05.)
+
+**Result** (aespa, four members, 0.06 / 0.12, blind labels; "longest wrong" is the longest run of
+one name on the wrong person):
+
+| sample | frames | sightings scored | named right | a dancer named | longest wrong |
+|---|---|---|---|---|---|
+| first audit (informed the overlap fix) | 145 | 499 | 98.4% | 0.8% | 0.6 s |
+| fresh sample (held out for the overlap fix) | 81 | 260 | 96.5% | **2.7%** | 0.4 s |
+| row sample (chosen by rule, never seen) | 111 | 259 | 96.5% | 1.2% | 0.2 s |
+| all three | 337 | 1,018 | 97.4% | 1.4% | |
+
+The spec's targets are at least 95% right, at most 2% dancers and no wrong name longer than 1 s.
+The first audit (the spec's ground truth) and the row sample meet all three. The fresh sample
+misses the dancer target, with 7 of 260.
+
+Most of those come from pieces taken under the margin. Across the three samples, such pieces hold
+96 scored sightings: 85 right (88.5%), 9 on dancers and 2 on another member. Without them every
+sample is under 1% dancers, and about 8% fewer sightings carry a name (19% fewer in the row
+sample). Two of the dancer pieces led by 0.031 against a bar of 0.030. Raising the bar because
+the labels found them would be tuning on the answer, so the bar stays where the rule put it and
+the trade is reported here.
+
+Each member is tracked in 82-96% of the clip (A 82.3%, B 95.5%, C 90.2%, D 87.7%), and all four
+at once in 67.6% of frames after gap filling (64.2% before).
+
+| | |
+|---|---|
+| ![All four named at 1:30](media/viewer_named_group.png) | ![All four named at 2:50](media/viewer_named_wide.png) |
+| *1:30, skeletons only: A, B, C and D each on their own body (C has no section reading here).* | *2:50, the wide formation: D, B, C, A.* |
+
+**Limits:**
+- In the row's core (about 149-151 s) only the member in front can be named, and the fanned arms
+  have no skeleton to score. In the row sample, D's own name is on D in 53% of the frames D is in.
+- D and A stay unseen at 151-153 s: their pieces there lead by less than half the margin.
+- One piece taken under the margin (A, 152.6-154.2 s) is on A most of the time, but the tracker's
+  box slides over a dancer at 152.6-152.8 s, D at 153.1 s and C at 154.1 s, and no split catches it.
+- Pieces taken under the margin are right 88.5% of the time, below the rest of the flow.
+  `tracking_report.json` lists them with times (`identity.taken_under_margin`) so they can be
+  checked by eye.
+- One clip, labelled blind but by the person who built the method. The first audit's labels shaped
+  the overlap fix and the fresh sample's shaped the row rule, so only the row sample is unseen for
+  the final code, and its dense-window frames sit 0.1 s from frames already seen.

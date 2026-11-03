@@ -183,6 +183,23 @@ most one member-section. So the report stays on window sections; `syncscore shif
 scores the hits, so the result is reproducible. The full story is in
 [docs/walkthrough.md](docs/walkthrough.md), Stage B.
 
+**Following named members** (aespa "Whiplash" practice, 3:03, four members among backup dancers,
+several in the same black). The members are named in one frame and followed by re-ID fingerprint
+and motion; the names were checked by hand on full frames, blind to the run's names, by outfit:
+
+| sample | frames | sightings | named right | a dancer named | longest wrong |
+|---|---|---|---|---|---|
+| first audit (informed a fix) | 145 | 499 | 98.4% | 0.8% | 0.6 s |
+| fresh sample | 81 | 260 | 96.5% | 2.7% | 0.4 s |
+| the row at 146-157 s (never seen before) | 111 | 259 | 96.5% | 1.2% | 0.2 s |
+
+The targets were at least 95% right, at most 2% on dancers and no wrong name over 1 s; the fresh
+sample misses the dancer one (7 of 260). Most of its misses are pieces just under the naming
+margin, taken because the member's motion continues into them. Those pieces are right 88.5% of
+the time; without them every sample is under 1% dancers, with about 8% fewer sightings named.
+Each member is tracked in 82-96% of the clip. Details in
+[docs/walkthrough.md](docs/walkthrough.md), Stage G.
+
 **What these numbers do and don't say.** They measure the *method* after pose extraction.
 They don't measure the pose model or tracker on real dancers. Synthetic motion is smoother than
 real dance, which flatters low frame rates in particular. Noise here is Gaussian; real
@@ -215,7 +232,14 @@ Real accuracy is bounded by the pose model.
 - **Repeated grooves** faster than ±400 ms are fundamentally ambiguous: a member one full cycle
   late looks on time. These windows are flagged, not scored.
 - **ID swaps between members in matching outfits** are not reliably detected by the colour
-  heuristic; the real swap rate needs the hand audit (`syncscore audit`).
+  heuristic; the real swap rate needs the hand audit (`syncscore audit`). Naming the members
+  (`--members`) replaces that heuristic with re-ID fingerprints.
+- **Named members, where people hide each other.** When members stand one behind another, only
+  the one in front can be named, and arms seen beside them get no skeleton of their own (on aespa,
+  about 2 s at 149-151 s). A member leading a half-hidden piece by less than half the naming
+  margin stays unseen there. Pieces taken under the margin are right less often (88.5% on aespa)
+  and carry most of the names put on dancers; the report lists them with times. All of this is
+  measured on one clip, labelled by eye.
 - **Two members:** the method can say that they differ, never who is wrong.
 - **Shape errors read about 5% small**, because the member is part of their own shape reference
   (the price of robustness in small groups). Errors under about 5° are at the noise floor.
@@ -265,10 +289,13 @@ python -m venv .venv
 syncscore demo --out results/demo                 # synthetic group through every output
 syncscore validate --out results/validate         # the benchmark above (a few minutes, runs in parallel)
 syncscore analyze path/to/video.mp4 --out results/   # real video
+syncscore analyze path/to/video.mp4 --out results/ --pose-only           # people, camera, fingerprints: ready to name members
+syncscore analyze path/to/video.mp4 --out results/ --members picks.json  # follow the members named in picks.json
 syncscore view path/to/video.mp4 --results results/  # the viewer: open results/viewer/index.html
 syncscore serve                                    # or all of it from the browser: upload, wait, view
 syncscore shift-test --results results/               # plant known delays in real tracks, check they come back
 syncscore audit path/to/video.mp4 --results results/ # sample frames to label IDs by hand
+syncscore audit path/to/video.mp4 --results results/ --times 148-150 # ...plus every 0.2 s in a window
 syncscore audit-score results/audit/ids.csv          # true ID-swap rate
 pytest                                             # unit tests for the alignment math and the synthetic recovery
 ```
@@ -279,11 +306,36 @@ with no soundtrack, `view` still writes the viewer and the page says why there i
 **From the browser:** `syncscore serve` starts a page at http://127.0.0.1:8000 and opens it. Only
 this computer can reach it. Pick an .mp4, set the number of members (0 counts them from the video)
 and press *Upload and measure*. The page shows each step as it runs; pose detection on a CPU takes
-several minutes for a 3-minute clip. When the analysis is done the page opens the video's viewer.
-Earlier uploads stay listed with a link to their viewer, and *Run again* repeats an analysis with
-another member count, reusing the poses already found. Uploads and their results are kept in
+several minutes for a 3-minute clip.
+
+Then the page asks you to name the members. It shows one frame with a box on every person: click a
+member, type her name, press Enter. Name at least two, in a frame where you can tell them apart;
+the suggested-frame buttons and the slider pick another frame (which clears the names). Tab moves
+between the boxes, Delete removes a name. *Continue* measures the members you named, by those names
+and in that order, following each one by how she looks (her re-ID fingerprint) and by where she is
+heading on the stage, through crossings, through people passing in front, and out of frame and back.
+Everyone you didn't name is left out. *Measure without names* measures the way it did before naming
+existed, picking the most visible people. When the analysis is done the page opens the video's viewer.
+
+Earlier uploads stay listed with a link to their viewer. *Run again* repeats an analysis with
+another member count, reusing the poses already found, and *Pick again* goes back to naming. Uploads and their results are kept in
 `results/uploads/` (git-ignored). The server sends the video in byte ranges, so seeking works.
 `--port` picks another port; `syncscore --config my.yaml serve` applies a config to every upload.
+
+The same from the command line: `analyze --pose-only` finds the people, follows the camera's pan
+and zoom and fingerprints everyone, then stops and lists suggested frames. Write the names into a
+`picks.json` (`{"frame": 1530, "members": [{"name": "karina", "box": [x1, y1, x2, y2]}, ...]}`,
+boxes in video pixels; each box picks the detected person it overlaps most, at an intersection
+over union of at least 0.5) and run `analyze --members
+picks.json`. `tracking_report.json` then has an `identity` block: each member's tracked share of the
+clip, where tracks were split because they changed hands at a crossing, the close calls, and the
+pieces taken under the margin (with times, to check by eye).
+
+The fingerprints come from [OpenCV Zoo's YouTu ReID](https://huggingface.co/opencv/person_reid_youtureid)
+(Apache-2.0, 107 MB), run with OpenCV, so nothing new needs installing. It downloads on first use to
+`~/.cache/syncscore/` and is checked against a pinned SHA-256. Fingerprinting takes about 65 ms per
+person per frame on a CPU (about 40 minutes for a 3-minute clip with nine people) and is kept, so it
+runs once per video. Only the numbers are kept, never the crops.
 
 `analyze` writes `summary.json` / `summary.csv` (per member and per section: offset with a 90%
 interval, share of sections in sync, strict single-window moments, body part most often off), `heatmap.png`, `report_cards/`,
@@ -314,13 +366,16 @@ M4 67 ms late, M5's left elbow is 25° off from 6 to 14 s; 10 s sections):
 
 ```
 syncscore/
-  pose/      extract.py (YOLO11-pose + ByteTrack), tracks.py (stitching, swaps, audit), smooth.py, video.py
+  pose/      extract.py (YOLO11-pose + ByteTrack), tracks.py (stitching, swaps, audit), smooth.py, video.py,
+             camera.py (pan and zoom), fingerprint.py (re-ID), recognize.py, motion.py, identity.py
+             (following named members), picks.py, prepare.py, gate.py (how well fingerprints name people)
   features/  bones.py (bone directions, mirroring)
   sync/      consensus.py, timing.py, shape.py, measure.py (the method), summary.py
   synth/     generate.py (synthetic groups), benchmark.py, report.py
   viz/       skeleton_video.py, heatmap.py, report_card.py, smoothing_plot.py, style.py,
              ghost.py, viewer_data.py, viewer/ (the page: index.html, viewer.js, viewer_core.js, viewer.css)
-  serve/     app.py (the local server, byte ranges), jobs.py (uploads, analysis jobs), page/ (the start page)
+  serve/     app.py (the local server, byte ranges), jobs.py (uploads, analysis jobs), page/ (the start page,
+             picker.js for naming the members)
   cli.py, pipeline.py, outputs.py, config.py
 configs/default.yaml
 tests/       alignment math, synthetic recovery, smoothing, tracking, outputs, viewer (js/ runs in Node)
