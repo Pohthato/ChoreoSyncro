@@ -14,9 +14,11 @@ function context() {
   });
 }
 
+let made = [];  // every element the page has made since openPage
+
 function element() {
   const listeners = {}, ctx = context();
-  return {
+  const el = {
     listeners, ctx, style: { setProperty() {} }, dataset: {}, classList: { toggle() {} }, attributes: {},
     hidden: false, disabled: false, textContent: "", innerHTML: "", title: "", value: "", width: 0, height: 0,
     currentTime: 0, readyState: 0, muted: true, playbackRate: 1,
@@ -27,10 +29,13 @@ function element() {
     querySelector: () => element(),
     appendChild() {}, add() {}, play: () => Promise.resolve(), pause() {},
   };
+  made.push(el);
+  return el;
 }
 
 // Open the page on `data` (as viewer_data.py writes it) with the URL query `search`; returns $(id).
 function openPage(data, search = "") {
+  made = [];
   const ids = new Map();
   const $ = (id) => (ids.has(id) ? ids.get(id) : ids.set(id, element()).get(id));
   const document = { getElementById: $, querySelectorAll: () => [], createElement: () => element(), addEventListener() {}, body: {} };
@@ -89,4 +94,12 @@ test("Sound is disabled whenever there is no video to hear", () => {
   $("video").listeners.error.forEach((fn) => fn());
   assert.equal($("note").hidden, false);
   assert.equal($("sound").disabled, true);
+});
+
+test("member names are shown as text, never parsed as HTML", () => {
+  // Picked names are typed by the user and kept as typed.
+  const name = '<img src=x onerror="alert(1)">';
+  openPage({ ...analysis(), names: [name] });
+  const html = made.map((el) => el.innerHTML).join("\n");
+  assert.ok(!html.includes("<img"), html);
 });

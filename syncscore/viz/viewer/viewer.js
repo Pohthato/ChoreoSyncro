@@ -327,7 +327,8 @@
   const nowList = $("now");
   const nowItems = D.names.map((name, i) => {
     const li = document.createElement("li");
-    li.innerHTML = `<button type="button"><span>${name}</span><span class="status"></span></button>`;
+    li.innerHTML = `<button type="button"><span></span><span class="status"></span></button>`;
+    li.querySelector("span").textContent = name;  // names are typed by the user: text, never HTML
     li.querySelector("button").addEventListener("click", () => setView("dancer", i));
     nowList.appendChild(li);
     return li;
@@ -341,7 +342,8 @@
   const rows = D.names.map((name, i) => {
     const row = document.createElement("div");
     row.className = "row";
-    row.innerHTML = `<span class="name">${name}</span><div class="track"></div>`;
+    row.innerHTML = `<span class="name"></span><div class="track"></div>`;
+    row.querySelector(".name").textContent = name;
     const track = row.querySelector(".track");
     D.sections.forEach((sec, k) => {
       const st = D.section_status[i][k];
