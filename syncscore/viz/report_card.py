@@ -8,7 +8,7 @@ import numpy as np
 from ..features.bones import PARTS
 from ..sync.measure import SyncResult
 from ..sync.sections import SectionTiming
-from .style import GRID, INK, INK_2, MUTED, SERIES, apply_style, signed_ms
+from .style import GRID, INK, INK_2, MUTED, SERIES, apply_style, as_text, signed_ms
 
 
 def _signed(ms: float | None) -> str:
@@ -32,7 +32,7 @@ def render_report_card(result: SyncResult, timing: SectionTiming, summary_member
 
     head = fig.add_subplot(grid[0, :])
     head.axis("off")
-    head.text(0, 0.95, summary_member["member"], fontsize=20, fontweight="bold", color=INK, va="top")
+    head.text(0, 0.95, as_text(summary_member["member"]), fontsize=20, fontweight="bold", color=INK, va="top")
     measured = timing.reliable[i]
     spread = np.ptp(timing.offset_ms[i, measured]) if measured.sum() > 1 else None
     stats = [

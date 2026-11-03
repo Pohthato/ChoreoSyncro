@@ -32,6 +32,12 @@ CRITICAL = "#d03b3b"
 SHAPE_FLAG = "#e87ba4"  # bones with a large pose error, drawn as a halo
 
 
+def as_text(name: str) -> str:
+    """A member's name as matplotlib text: picked names are typed by the user, and a pair of "$"
+    would start mathtext (or fail to parse when the figure is drawn)."""
+    return str(name).replace("$", r"\$")
+
+
 def signed_ms(value: float) -> str:
     """'+12 ms' / '-8 ms' / '0 ms' (never '-0')."""
     rounded = int(round(value))

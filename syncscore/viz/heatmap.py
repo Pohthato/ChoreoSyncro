@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from ..sync.sections import SectionTiming
-from .style import DIVERGING, INK, INK_2, MUTED, SURFACE, apply_style, signed_ms
+from .style import DIVERGING, INK, INK_2, MUTED, SURFACE, apply_style, as_text, signed_ms
 
 
 def render_heatmap(timing: SectionTiming, names: list, path: Path, limit_ms: float = 150.0) -> None:
@@ -52,7 +52,7 @@ def render_heatmap(timing: SectionTiming, names: list, path: Path, limit_ms: flo
                             bbox=dict(facecolor=SURFACE, edgecolor="none", pad=1.5))
     ax.set_xlim(0, duration)
     ax.set_ylim(members, 0)
-    ax.set_yticks(np.arange(members) + 0.5, names)
+    ax.set_yticks(np.arange(members) + 0.5, [as_text(n) for n in names])
     ax.set_xlabel("time (s)")
     ax.grid(False)
     ax.set_title("Timing per member and section, ms (hatched = no reliable reading; grey ≈ value = too uncertain)", loc="left", pad=10)

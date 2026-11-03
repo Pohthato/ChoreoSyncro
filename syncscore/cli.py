@@ -21,6 +21,7 @@ def _analyze(args: argparse.Namespace) -> int:
     from .pose.tracks import Detections, assemble, assign_members, build_tracklets, count_members, suspected_swaps
     from .pose.video import probe, resample_uniform
     from .viz.smoothing_plot import render_smoothing_plot
+    from .viz.style import as_text
 
     config = load_config(args.config)
     video, out = Path(args.video), Path(args.out)
@@ -123,7 +124,7 @@ def _analyze(args: argparse.Namespace) -> int:
     write_outputs(result, xy_s, conf_s, out, config, info.size, gif_seconds=8.0)
     best = int(np.argmax(visible.sum(axis=1)))
     raw = np.where((conf[best, :, 9] >= min_conf)[:, None], xy[best, :, 9], np.nan)
-    render_smoothing_plot(raw, xy_s[best, :, 9], fps, out / "smoothing_example.png", f"{names[best]} left wrist: raw vs smoothed")
+    render_smoothing_plot(raw, xy_s[best, :, 9], fps, out / "smoothing_example.png", f"{as_text(names[best])} left wrist: raw vs smoothed")
     if following is None:
         print(f"  {len(names)} members, {report['rejoins']} broken tracks rejoined, {len(swaps)} suspected ID swaps")
     else:

@@ -36,6 +36,27 @@ def test_every_deliverable_exists(written):
     assert sorted(p.name for p in (out / "report_cards").iterdir()) == ["M1.png", "M2.png", "M3.png"]
 
 
+def test_card_names_keep_a_plain_name_and_make_any_other_a_safe_file_name():
+    from syncscore.outputs import card_stems
+
+    assert card_stems(["M1", "Winter", "Ning-ning 宁宁"]) == ["M1", "Winter", "Ning-ning 宁宁"]
+    assert card_stems(["Winter?", "Giselle/Aeri", "Karina: lead", "CON", "Aeri. "]) == [
+        "Winter_", "Giselle_Aeri", "Karina_ lead", "_CON", "Aeri"]
+    assert card_stems(["A?", "A*", "a_"]) == ["A_", "A_-2", "a_-3"]  # two names can't share a card
+
+
+def test_names_typed_by_the_user_are_written_and_drawn_as_text(tmp_path):
+    # Picked names are kept as typed: they must not break a file name, and "$" must not start mathtext.
+    config = load_config()
+    group = make_group(GroupSpec(n_members=3, duration_s=16, fps=30, offsets_ms=[0, 0, 100], noise=0.005, seed=21))
+    names = ["Winter?", "Giselle/Aeri", "Karina: $^$"]
+    result, xy, conf = analyze_keypoints(group.keypoints, group.conf, group.fps, config, names=names)
+    write_outputs(result, xy, conf, tmp_path, config, (1280, 720))
+    cards = sorted(p.name for p in (tmp_path / "report_cards").iterdir())
+    assert cards == ["Giselle_Aeri.png", "Karina_ $^$.png", "Winter_.png"]
+    assert all((tmp_path / "report_cards" / c).stat().st_size > 0 for c in cards)
+
+
 def test_summary_names_the_planted_errors(written):
     out, _ = written
     summary = json.loads((out / "summary.json").read_text(encoding="utf-8"))
