@@ -1,7 +1,8 @@
 # Walkthrough: how SyncScore is built, stage by stage
 
-Written to be explained out loud. Each stage says what was built, why, and what question an
-interviewer is likely to ask about it.
+These are my development notes for the project, in the order the stages were built. Each stage
+records what I built, why I built it that way, and the questions a reader or examiner is likely
+to ask about it.
 
 ## Stage 1: scaffold
 
